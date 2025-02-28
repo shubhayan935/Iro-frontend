@@ -6,9 +6,8 @@ import { useRouter } from "next/navigation"
 import { useUser } from "./context/UserContext"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
-import Image from "next/image"
+import { GradientBackground } from "@/components/gradient-background"
 
 export default function Login() {
   const [email, setEmail] = useState("")
@@ -25,18 +24,8 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center relative">
-      {/* Background Image */}
-      <div className="absolute inset-0 z-0">
-        <Image
-          src="/background-red.png"
-          alt="Background"
-          fill
-          priority
-          className="object-cover"
-        />
-      </div>
-
+    <div className="min-h-screen flex items-center justify-center">
+      <GradientBackground />
       <div className="w-full max-w-md p-6 relative z-10">
         <div className="mb-8 text-center">
           <h1 className="text-3xl font-bold text-white mb-2">Welcome back</h1>

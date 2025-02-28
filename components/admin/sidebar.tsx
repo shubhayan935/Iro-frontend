@@ -22,16 +22,16 @@ export function Sidebar() {
   ]
 
   return (
-    <div className="w-80 border-r border-gray-800 backdrop-blur-sm bg-black/30 text-gray-300 p-4 flex flex-col">
+    <div className="w-80 border-r border-gray-800 backdrop-blur-sm bg-black/60 text-gray-300 p-4 flex flex-col">
       <Link href="/admin" className="flex items-center gap-2 px-2 py-1.5 mb-6 text-gray-300 hover:text-white">
         <Home size={20} />
         <span>Home</span>
       </Link>
 
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-xs font-semibold tracking-wider text-gray-500">AGENTS</h2>
+        <h2 className="text-sm font-semibold tracking-wider text-gray-500">AGENTS</h2>
         <Link href="/admin/create">
-          <Button variant="ghost" size="sm" className="h-8 px-2 text-gray-400 hover:text-white">
+          <Button variant="ghost" size="sm" className="h-8 px-2 text-gray-400 hover:text-white hover:bg-muted/30">
             <Plus size={16} />
             Create Agent
           </Button>
@@ -44,7 +44,7 @@ export function Sidebar() {
             key={agent.id}
             href={`/admin/agents/${agent.id}`}
             className={cn(
-              "block p-3 rounded-lg text-sm transition-colors",
+              "block p-3 rounded-lg text-md transition-colors",
               pathname === `/admin/agents/${agent.id}`
                 ? "bg-gray-800/60 text-white"
                 : "hover:bg-gray-800/50 text-gray-400",

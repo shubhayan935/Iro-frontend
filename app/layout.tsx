@@ -1,14 +1,6 @@
 import type React from "react"
 import "./globals.css"
-import { Inter } from "next/font/google"
 import { UserProvider } from "./context/UserContext"
-
-const inter = Inter({ subsets: ["latin"] })
-
-export const metadata = {
-  title: "Iro",
-  description: "AI Onboarding Manager - Streamline your employee onboarding process with AI",
-}
 
 export default function RootLayout({
   children,
@@ -17,13 +9,16 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={inter.className}>
-        <UserProvider>{children}</UserProvider>
+      <body>
+        <div className="relative min-h-screen">
+        <UserProvider>
+            {/* Content */}
+            <div className="relative z-10 min-h-screen">
+              {children}
+            </div>
+          </UserProvider>
+        </div>
       </body>
     </html>
   )
 }
-
-
-
-import './globals.css'

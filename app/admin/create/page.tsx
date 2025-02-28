@@ -8,11 +8,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Plus, X } from "lucide-react"
+import { Plus, X, Video } from "lucide-react"
+import { RecordOnboarding } from "@/components/admin/record-onboarding"
 
 export default function CreateAgent() {
   const [emails, setEmails] = useState<string[]>([])
   const [newEmail, setNewEmail] = useState("")
+  const [isRecording, setIsRecording] = useState(false)
+  const [recordedSteps, setRecordedSteps] = useState<string[]>([])
 
   const addEmail = (e: React.FormEvent) => {
     e.preventDefault()
@@ -24,6 +27,15 @@ export default function CreateAgent() {
 
   const removeEmail = (email: string) => {
     setEmails(emails.filter((e) => e !== email))
+  }
+
+  const handleStartRecording = () => {
+    setIsRecording(true)
+  }
+
+  const handleFinishRecording = (steps: string[]) => {
+    setIsRecording(false)
+    setRecordedSteps(steps)
   }
 
   return (
@@ -96,11 +108,28 @@ export default function CreateAgent() {
           </div>
 
           <div className="grid gap-2">
-            <Label className="text-gray-300">Onboarding Steps</Label>
-            <Button className="w-full" variant="outline">
-              <Plus size={16} className="mr-2" />
-              Add Step
-            </Button>
+            <Label className="text-gray-300">Onboarding Workflow</Label>
+            {recordedSteps.length > 0 ? (
+              <div className="space-y-2">
+                <p className="text-sm text-gray-400">AI-generated workflow based on your recording:</p>
+                <ul className="list-disc pl-5 space-y-1">
+                  {recordedSteps.map((step, index) => (
+                    <li key={index} className="text-gray-300">
+                      {step}
+                    </li>
+                  ))}
+                </ul>
+                <Button onClick={handleStartRecording} className="mt-2">
+                  <Video size={16} className="mr-2" />
+                  Record Again
+                </Button>
+              </div>
+            ) : (
+              <Button onClick={handleStartRecording}>
+                <Video size={16} className="mr-2" />
+                Record Onboarding Process
+              </Button>
+            )}
           </div>
 
           <div className="flex justify-end gap-3 mt-6">
@@ -109,6 +138,8 @@ export default function CreateAgent() {
           </div>
         </CardContent>
       </Card>
+
+      {isRecording && <RecordOnboarding onFinish={handleFinishRecording} />}
     </div>
   )
 }

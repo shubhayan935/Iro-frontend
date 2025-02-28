@@ -12,7 +12,7 @@ export default function AdminLayout({
       {/* Background Image */}
       <div className="absolute inset-0 z-0">
         <Image
-          src="/background-red.png"
+          src="/background.png"
           alt="Background"
           fill
           priority

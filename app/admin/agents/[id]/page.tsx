@@ -24,6 +24,12 @@ const MOCK_AGENTS = {
     steps: 12,
     employees: [{ name: "Carol White", started: "Feb 24, 2024", progress: "4/12", status: "In Progress" }],
   },
+  "3": {
+    name: "Marketing Onboarding",
+    creator: "Shubhayan Srivastava",
+    steps: 10,
+    employees: [{ name: "Alex Chen", started: "Feb 25, 2024", progress: "6/12", status: "In Progress" }],
+  },
 }
 
 export default function AgentPage({ params }: { params: { id: string } }) {
@@ -45,12 +51,12 @@ export default function AgentPage({ params }: { params: { id: string } }) {
           <div>created 3 minutes ago</div>
         </div>
         <div className="flex gap-3 mt-4">
-          <Button className="gap-2">
+          <Button variant="secondary" className="gap-2">
             <Play size={16} />
             Run
           </Button>
           <Link href={`/admin/agents/${params.id}/edit`}>
-            <Button variant="outline" className="gap-2">
+            <Button variant="default" className="gap-2 hover:scale-120">
               <Pencil size={16} />
               Edit
             </Button>
@@ -77,7 +83,7 @@ export default function AgentPage({ params }: { params: { id: string } }) {
       </div>
 
       {activeTab === "activity" && (
-        <Card className="bg-[#1C1C1C] border-gray-800">
+        <Card className="bg-[#1C1C1C] bg-opacity-50 border-gray-800">
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
               <CardTitle className="text-gray-200">Recent Activity</CardTitle>
@@ -90,7 +96,7 @@ export default function AgentPage({ params }: { params: { id: string } }) {
           <CardContent>
             <Table>
               <TableHeader>
-                <TableRow className="border-gray-800">
+                <TableRow className="border-gray-800 hover:bg-transparent">
                   <TableHead className="text-gray-400">Employee</TableHead>
                   <TableHead className="text-gray-400">Started</TableHead>
                   <TableHead className="text-gray-400">Progress</TableHead>
@@ -100,7 +106,7 @@ export default function AgentPage({ params }: { params: { id: string } }) {
               </TableHeader>
               <TableBody>
                 {agent.employees.map((employee, i) => (
-                  <TableRow key={i} className="border-gray-800">
+                  <TableRow key={i} className="border-gray-800 hover:bg-muted/10 rounded-xl hover:cursor-pointer">
                     <TableCell className="text-gray-300">{employee.name}</TableCell>
                     <TableCell className="text-gray-400">{employee.started}</TableCell>
                     <TableCell className="text-gray-400">{employee.progress}</TableCell>
@@ -119,7 +125,7 @@ export default function AgentPage({ params }: { params: { id: string } }) {
       )}
 
       {activeTab === "workflow" && (
-        <Card className="bg-[#1C1C1C] border-gray-800">
+        <Card className="bg-[#1C1C1C] bg-opacity-50 border-gray-800">
           <CardHeader>
             <CardTitle className="text-gray-200">Workflow</CardTitle>
             <CardDescription>Manage the onboarding workflow for this agent</CardDescription>
@@ -131,7 +137,7 @@ export default function AgentPage({ params }: { params: { id: string } }) {
       )}
 
       {activeTab === "settings" && (
-        <Card className="bg-[#1C1C1C] border-gray-800">
+        <Card className="bg-[#1C1C1C] bg-opacity-50 border-gray-800">
           <CardHeader>
             <CardTitle className="text-gray-200">Settings</CardTitle>
             <CardDescription>Configure agent settings</CardDescription>
