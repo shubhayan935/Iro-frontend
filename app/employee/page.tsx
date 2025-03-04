@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { GradientBackground } from "@/components/gradient-background"
-import { EmployeeSidebar } from "@/components/employee/sidebar"
+import { Sidebar } from "@/components/employee/sidebar"
 import { EmployeeHeader } from "@/components/employee/header"
 import { ArrowRight, BookOpen, CheckCircle2, FileText, MessageSquare, Play } from "lucide-react"
 
@@ -18,7 +18,7 @@ export default function EmployeeDashboard() {
     <div className="min-h-screen bg-black text-gray-100">
       <GradientBackground />
       <div className="flex h-screen overflow-hidden">
-        <EmployeeSidebar />
+        <Sidebar />
         <div className="flex-1 overflow-auto">
           <EmployeeHeader />
           <main className="p-6">

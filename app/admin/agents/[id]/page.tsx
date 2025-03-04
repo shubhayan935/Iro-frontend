@@ -1,41 +1,46 @@
 "use client"
 
 import { useState } from "react"
+import { useRouter } from "next/navigation"
+import { useQuery } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Play, Pencil, MoreHorizontal, ArrowUpRight } from "lucide-react"
+import { Play, Pencil, MoreHorizontal, ChevronDown, ChevronUp } from "lucide-react"
 import Link from "next/link"
-
-// This would come from your database
-const MOCK_AGENTS = {
-  "1": {
-    name: "Engineering Onboarding",
-    creator: "John Doe",
-    steps: 15,
-    employees: [
-      { name: "Alice Johnson", started: "Feb 23, 2024", progress: "8/15", status: "In Progress" },
-      { name: "Bob Smith", started: "Feb 22, 2024", progress: "15/15", status: "Completed" },
-    ],
-  },
-  "2": {
-    name: "Design Onboarding",
-    creator: "Jane Smith",
-    steps: 12,
-    employees: [{ name: "Carol White", started: "Feb 24, 2024", progress: "4/12", status: "In Progress" }],
-  },
-  "3": {
-    name: "Marketing Onboarding",
-    creator: "Shubhayan Srivastava",
-    steps: 10,
-    employees: [{ name: "Alex Chen", started: "Feb 25, 2024", progress: "6/12", status: "In Progress" }],
-  },
-}
+import { ExpandedEmployeeRow } from "@/components/admin/expanded-employee-row"
+import { getAgent } from "@/lib/api"
+import { toast } from "@/components/ui/use-toast"
 
 export default function AgentPage({ params }: { params: { id: string } }) {
-  const agent = MOCK_AGENTS[params.id as keyof typeof MOCK_AGENTS]
   const [activeTab, setActiveTab] = useState("activity")
+  const [expandedRows, setExpandedRows] = useState<string[]>([])
+  const router = useRouter()
 
+  const {
+    data: agent,
+    isLoading,
+    error,
+  } = useQuery({
+    queryKey: ["agent", params.id],
+    queryFn: () => getAgent(params.id),
+  })
+
+  const toggleRowExpansion = (employeeName: string) => {
+    setExpandedRows((prev) =>
+      prev.includes(employeeName) ? prev.filter((name) => name !== employeeName) : [...prev, employeeName],
+    )
+  }
+
+  if (isLoading) return <div>Loading...</div>
+  if (error) {
+    toast({
+      title: "Error",
+      description: "Failed to load agent details. Please try again.",
+      variant: "destructive",
+    })
+    return <div>Error loading agent details.</div>
+  }
   if (!agent) return <div>Agent not found</div>
 
   return (
@@ -45,18 +50,16 @@ export default function AgentPage({ params }: { params: { id: string } }) {
         <div className="flex items-center gap-6 text-sm text-gray-400">
           <div className="flex items-center gap-2">
             <span className="w-6 h-6 rounded-full bg-gray-700" />
-            <span>Created by {agent.creator}</span>
+            <span>Role: {agent.role}</span>
           </div>
-          <div>last modified 2 minutes ago</div>
-          <div>created 3 minutes ago</div>
         </div>
         <div className="flex gap-3 mt-4">
-          <Button variant="secondary" className="gap-2">
+          <Button className="gap-2">
             <Play size={16} />
             Run
           </Button>
           <Link href={`/admin/agents/${params.id}/edit`}>
-            <Button variant="default" className="gap-2 hover:scale-120">
+            <Button variant="outline" className="gap-2">
               <Pencil size={16} />
               Edit
             </Button>
@@ -83,7 +86,7 @@ export default function AgentPage({ params }: { params: { id: string } }) {
       </div>
 
       {activeTab === "activity" && (
-        <Card className="bg-[#1C1C1C] bg-opacity-50 border-gray-800">
+        <Card className="bg-[#1C1C1C] border-gray-800">
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
               <CardTitle className="text-gray-200">Recent Activity</CardTitle>
@@ -96,27 +99,51 @@ export default function AgentPage({ params }: { params: { id: string } }) {
           <CardContent>
             <Table>
               <TableHeader>
-                <TableRow className="border-gray-800 hover:bg-transparent">
+                <TableRow className="border-gray-800">
                   <TableHead className="text-gray-400">Employee</TableHead>
-                  <TableHead className="text-gray-400">Started</TableHead>
+                  <TableHead className="text-gray-400">Email</TableHead>
                   <TableHead className="text-gray-400">Progress</TableHead>
                   <TableHead className="text-gray-400">Status</TableHead>
                   <TableHead className="text-gray-400"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {agent.employees.map((employee, i) => (
-                  <TableRow key={i} className="border-gray-800 hover:bg-muted/10 rounded-xl hover:cursor-pointer">
-                    <TableCell className="text-gray-300">{employee.name}</TableCell>
-                    <TableCell className="text-gray-400">{employee.started}</TableCell>
-                    <TableCell className="text-gray-400">{employee.progress}</TableCell>
-                    <TableCell className="text-gray-300">{employee.status}</TableCell>
-                    <TableCell>
-                      <Button variant="ghost" size="icon">
-                        <ArrowUpRight size={16} />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
+                {agent.emails?.map((email, i) => (
+                  <>
+                    <TableRow
+                      key={i}
+                      className="border-gray-800 cursor-pointer hover:bg-gray-800/50"
+                      onClick={() => toggleRowExpansion(email)}
+                    >
+                      <TableCell className="text-gray-300">{email.split("@")[0]}</TableCell>
+                      <TableCell className="text-gray-400">{email}</TableCell>
+                      <TableCell className="text-gray-400">In Progress</TableCell>
+                      <TableCell className="text-gray-300">Active</TableCell>
+                      <TableCell>
+                        <Button variant="ghost" size="icon">
+                          {expandedRows.includes(email) ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                    {expandedRows.includes(email) && (
+                      <TableRow>
+                        <TableCell colSpan={5} className="bg-gray-800/30 px-4 py-2">
+                          <ExpandedEmployeeRow
+                            employee={{
+                              name: email.split("@")[0],
+                              email: email,
+                              started: "N/A",
+                              progress: "In Progress",
+                              status: "Active",
+                              lastActivity: "N/A",
+                              nextStep: "N/A",
+                              notes: "No additional notes",
+                            }}
+                          />
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </>
                 ))}
               </TableBody>
             </Table>
@@ -125,25 +152,31 @@ export default function AgentPage({ params }: { params: { id: string } }) {
       )}
 
       {activeTab === "workflow" && (
-        <Card className="bg-[#1C1C1C] bg-opacity-50 border-gray-800">
+        <Card className="bg-[#1C1C1C] border-gray-800">
           <CardHeader>
             <CardTitle className="text-gray-200">Workflow</CardTitle>
             <CardDescription>Manage the onboarding workflow for this agent</CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="text-gray-400">Workflow content goes here</p>
+            <ul className="list-disc pl-5 space-y-2">
+              {agent.steps?.map((step, index) => (
+                <li key={index} className="text-gray-300">
+                  <strong>{step.title}</strong>: {step.description}
+                </li>
+              ))}
+            </ul>
           </CardContent>
         </Card>
       )}
 
       {activeTab === "settings" && (
-        <Card className="bg-[#1C1C1C] bg-opacity-50 border-gray-800">
+        <Card className="bg-[#1C1C1C] border-gray-800">
           <CardHeader>
             <CardTitle className="text-gray-200">Settings</CardTitle>
             <CardDescription>Configure agent settings</CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="text-gray-400">Settings content goes here</p>
+            <p className="text-gray-400">{agent.description}</p>
           </CardContent>
         </Card>
       )}

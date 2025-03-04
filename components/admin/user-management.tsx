@@ -1,10 +1,23 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Table, TableBody, TableCell, TableHead, TableRow, TableHeader } from "@/components/ui/table"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
+  TableHeader,
+} from "@/components/ui/table"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
 import { Plus, Pencil, Trash, Search } from "lucide-react"
 import {
   Dialog,
@@ -27,75 +40,110 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 import { Label } from "@/components/ui/label"
+import { type User, type UserCreate, createUser, updateUser, deleteUser } from "@/lib/api"
+import { useUser } from "@/app/context/UserContext"
+import { toast } from "@/components/ui/use-toast"
 
-type User = {
-  id: string
-  name: string
-  email: string
-  role: "Employee" | "Admin"
+interface UserManagementProps {
+  users: User[]
+  onUserChange: () => void
 }
 
-// Mock data for users
-const MOCK_USERS: User[] = [
-  { id: "1", name: "John Doe", email: "john@example.com", role: "Employee" },
-  { id: "2", name: "Jane Smith", email: "jane@example.com", role: "Admin" },
-  { id: "3", name: "Bob Johnson", email: "bob@example.com", role: "Employee" },
-]
-
-export function UserManagement() {
-  const [users, setUsers] = useState<User[]>(MOCK_USERS)
-  const [filteredUsers, setFilteredUsers] = useState<User[]>(MOCK_USERS)
-  const [newUser, setNewUser] = useState<Omit<User, "id">>({ name: "", email: "", role: "Employee" })
+export function UserManagement({ users, onUserChange }: UserManagementProps) {
+  const { user: currentUser } = useUser()
+  const [filteredUsers, setFilteredUsers] = useState<User[]>(users)
+  // Removed organization_id from newUser initial state.
+  const [newUser, setNewUser] = useState<UserCreate>({
+    email: "",
+    role: "Employee",
+    password: "",
+  })
   const [editingUser, setEditingUser] = useState<User | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
 
-  useEffect(() => {
-    const lowercasedSearch = searchTerm.toLowerCase()
+  const handleSearch = (term: string) => {
+    setSearchTerm(term)
+    const lowercasedSearch = term.toLowerCase()
     const filtered = users.filter(
       (user) =>
-        user.name.toLowerCase().includes(lowercasedSearch) ||
         user.email.toLowerCase().includes(lowercasedSearch) ||
-        user.role.toLowerCase().includes(lowercasedSearch),
+        user.role.toLowerCase().includes(lowercasedSearch)
     )
     setFilteredUsers(filtered)
-  }, [users, searchTerm])
+  }
 
-  const addUser = () => {
-    if (newUser.name && newUser.email) {
-      const newId = String(Math.max(...users.map((u) => Number.parseInt(u.id))) + 1)
-      setUsers([...users, { ...newUser, id: newId }])
-      setNewUser({ name: "", email: "", role: "Employee" })
+  const addUser = async () => {
+    if (newUser.email && newUser.role) {
+      try {
+        await createUser(newUser)
+        onUserChange()
+        setNewUser({ email: "", role: "Employee", password: "" })
+        toast({
+          title: "Success",
+          description: "User added successfully.",
+        })
+      } catch (error) {
+        console.error("Failed to add user:", error)
+        toast({
+          title: "Error",
+          description: "Failed to add user. Please try again.",
+          variant: "destructive",
+        })
+      }
     }
   }
 
-  const updateUser = () => {
+  const updateUserHandler = async () => {
     if (editingUser) {
-      setUsers(users.map((user) => (user.id === editingUser.id ? editingUser : user)))
-      setEditingUser(null)
-      setIsEditDialogOpen(false)
+      try {
+        await updateUser(editingUser._id, {
+          email: editingUser.email,
+          role: editingUser.role,
+        })
+        onUserChange()
+        setEditingUser(null)
+        setIsEditDialogOpen(false)
+        toast({
+          title: "Success",
+          description: "User updated successfully.",
+        })
+      } catch (error) {
+        console.error("Failed to update user:", error)
+        toast({
+          title: "Error",
+          description: "Failed to update user. Please try again.",
+          variant: "destructive",
+        })
+      }
     }
   }
 
-  const deleteUser = (id: string) => {
-    setUsers(users.filter((user) => user.id !== id))
+  const deleteUserHandler = async (id: string) => {
+    try {
+      await deleteUser(id)
+      onUserChange()
+      toast({
+        title: "Success",
+        description: "User deleted successfully.",
+      })
+    } catch (error) {
+      console.error("Failed to delete user:", error)
+      toast({
+        title: "Error",
+        description: "Failed to delete user. Please try again.",
+        variant: "destructive",
+      })
+    }
   }
 
   return (
     <Card className="bg-black/40 border-white/10 backdrop-blur-xl">
       <CardHeader>
-        <CardTitle className="text-white">User Management</CardTitle>
-        <CardDescription>Add, edit, or remove users</CardDescription>
       </CardHeader>
       <CardContent>
         <div className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <Input
-              placeholder="Name"
-              value={newUser.name}
-              onChange={(e) => setNewUser({ ...newUser, name: e.target.value })}
-              className="bg-gray-900 border-gray-700 text-gray-200"
-            />
             <Input
               placeholder="Email"
               value={newUser.email}
@@ -104,12 +152,21 @@ export function UserManagement() {
             />
             <select
               value={newUser.role}
-              onChange={(e) => setNewUser({ ...newUser, role: e.target.value as "Employee" | "Admin" })}
+              onChange={(e) =>
+                setNewUser({ ...newUser, role: e.target.value as "Employee" | "Admin" })
+              }
               className="bg-gray-900 border-gray-700 text-gray-200 rounded-md px-3 py-2"
             >
               <option value="Employee">Employee</option>
               <option value="Admin">Admin</option>
             </select>
+            <Input
+              type="password"
+              placeholder="Password"
+              value={newUser.password}
+              onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
+              className="bg-gray-900 border-gray-700 text-gray-200"
+            />
             <Button
               onClick={addUser}
               className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700"
@@ -123,7 +180,7 @@ export function UserManagement() {
             <Input
               placeholder="Search users..."
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => handleSearch(e.target.value)}
               className="bg-gray-900 border-gray-700 text-gray-200 pl-10"
             />
           </div>
@@ -132,21 +189,25 @@ export function UserManagement() {
             <Table>
               <TableHeader className="bg-gray-900/50">
                 <TableRow className="hover:bg-transparent border-gray-800">
-                  <TableHead className="text-gray-400 font-medium">Name</TableHead>
                   <TableHead className="text-gray-400 font-medium">Email</TableHead>
                   <TableHead className="text-gray-400 font-medium">Role</TableHead>
-                  <TableHead className="text-gray-400 font-medium text-right">Actions</TableHead>
+                  <TableHead className="text-gray-400 font-medium text-right">
+                    Actions
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredUsers.map((user) => (
-                  <TableRow key={user.id} className="border-gray-800 hover:bg-gray-800/30">
-                    <TableCell className="font-medium text-gray-300">{user.name}</TableCell>
-                    <TableCell className="text-gray-300">{user.email}</TableCell>
+                  <TableRow key={user._id} className="border-gray-800 hover:bg-gray-800/30">
+                    <TableCell className="font-medium text-gray-300">
+                      {user.email}
+                    </TableCell>
                     <TableCell>
                       <span
                         className={`px-2 py-1 rounded-full text-xs ${
-                          user.role === "Admin" ? "bg-purple-500/20 text-purple-300" : "bg-blue-500/20 text-blue-300"
+                          user.role === "Admin"
+                            ? "bg-purple-500/20 text-purple-300"
+                            : "bg-blue-500/20 text-blue-300"
                         }`}
                       >
                         {user.role}
@@ -174,26 +235,15 @@ export function UserManagement() {
                           <div className="grid gap-4 py-4">
                             <div className="grid grid-cols-4 items-center gap-4">
                               <Label htmlFor="name" className="text-right">
-                                Name
-                              </Label>
-                              <Input
-                                id="name"
-                                value={editingUser?.name ?? ""}
-                                onChange={(e) =>
-                                  setEditingUser((prev) => (prev ? { ...prev, name: e.target.value } : null))
-                                }
-                                className="col-span-3 bg-gray-800 border-gray-700"
-                              />
-                            </div>
-                            <div className="grid grid-cols-4 items-center gap-4">
-                              <Label htmlFor="email" className="text-right">
                                 Email
                               </Label>
                               <Input
                                 id="email"
                                 value={editingUser?.email ?? ""}
                                 onChange={(e) =>
-                                  setEditingUser((prev) => (prev ? { ...prev, email: e.target.value } : null))
+                                  setEditingUser((prev) =>
+                                    prev ? { ...prev, email: e.target.value } : null
+                                  )
                                 }
                                 className="col-span-3 bg-gray-800 border-gray-700"
                               />
@@ -207,7 +257,9 @@ export function UserManagement() {
                                 value={editingUser?.role ?? "Employee"}
                                 onChange={(e) =>
                                   setEditingUser((prev) =>
-                                    prev ? { ...prev, role: e.target.value as "Employee" | "Admin" } : null,
+                                    prev
+                                      ? { ...prev, role: e.target.value as "Employee" | "Admin" }
+                                      : null
                                   )
                                 }
                                 className="col-span-3 bg-gray-800 border-gray-700 rounded-md px-3 py-2"
@@ -218,7 +270,7 @@ export function UserManagement() {
                             </div>
                           </div>
                           <DialogFooter>
-                            <Button onClick={updateUser} className="bg-blue-500 hover:bg-blue-600">
+                            <Button onClick={updateUserHandler} className="bg-blue-500 hover:bg-blue-600">
                               Save changes
                             </Button>
                           </DialogFooter>
@@ -236,10 +288,11 @@ export function UserManagement() {
                         </AlertDialogTrigger>
                         <AlertDialogContent className="bg-gray-900 text-gray-200">
                           <AlertDialogHeader>
-                            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                            <AlertDialogTitle>
+                              Are you absolutely sure?
+                            </AlertDialogTitle>
                             <AlertDialogDescription>
-                              This action cannot be undone. This will permanently delete the user account and remove
-                              their data from our servers.
+                              This action cannot be undone. This will permanently delete the user account.
                             </AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>
@@ -248,7 +301,7 @@ export function UserManagement() {
                             </AlertDialogCancel>
                             <AlertDialogAction
                               className="bg-red-600 hover:bg-red-700"
-                              onClick={() => deleteUser(user.id)}
+                              onClick={() => deleteUserHandler(user._id)}
                             >
                               Delete
                             </AlertDialogAction>
@@ -271,4 +324,3 @@ export function UserManagement() {
     </Card>
   )
 }
-

@@ -5,8 +5,13 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Mic, StopCircle } from "lucide-react"
 
+interface Step {
+  title: string;
+  description: string;
+}
+
 interface RecordOnboardingProps {
-  onFinish: (steps: string[]) => void
+  onFinish: (steps: Step[]) => void
 }
 
 export function RecordOnboarding({ onFinish }: RecordOnboardingProps) {
@@ -37,12 +42,12 @@ export function RecordOnboarding({ onFinish }: RecordOnboardingProps) {
     setIsRecording(false)
     // Simulate AI processing
     setTimeout(() => {
-      const generatedSteps = [
-        "Introduction to company culture and values",
-        "Setup of development environment",
-        "Overview of project structure and architecture",
-        "Introduction to team members and communication channels",
-        "Review of coding standards and best practices",
+      const generatedSteps: Step[] = [
+        { title: "Introduction to company culture and values", description: "Learn about the company culture and values." },
+        { title: "Setup of development environment", description: "Configure your development tools and environment." },
+        { title: "Overview of project structure and architecture", description: "Understand the project structure and architecture." },
+        { title: "Introduction to team members and communication channels", description: "Meet your team and learn communication channels." },
+        { title: "Review of coding standards and best practices", description: "Review coding standards and best practices." },
       ]
       onFinish(generatedSteps)
     }, 2000)
@@ -63,7 +68,8 @@ export function RecordOnboarding({ onFinish }: RecordOnboardingProps) {
             </p>
             {isRecording && (
               <p className="text-red-500 font-semibold">
-                Recording: {Math.floor(recordingTime / 60)}:{recordingTime % 60 < 10 ? "0" : ""}
+                Recording: {Math.floor(recordingTime / 60)}:
+                {recordingTime % 60 < 10 ? "0" : ""}
                 {recordingTime % 60}
               </p>
             )}
@@ -86,4 +92,3 @@ export function RecordOnboarding({ onFinish }: RecordOnboardingProps) {
     </div>
   )
 }
-

@@ -69,6 +69,7 @@ app/
   page.tsx
 components/
   admin/
+    expanded-employee-row.tsx
     record-onboarding.tsx
     sidebar.tsx
     user-management.tsx
@@ -133,10 +134,10 @@ hooks/
   use-mobile.tsx
   use-toast.ts
 lib/
+  api.ts
   utils.ts
 public/
   placeholder-logo.svg
-  placeholder.svg
 src/
   app/
     globals.css
@@ -168,35 +169,50 @@ File: app/admin/agents/[id]/edit/page.tsx
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Plus, X, GripVertical } from "lucide-react"
-
-// This would come from your database
-const MOCK_AGENTS = {
-  "1": {
-    name: "Engineering Onboarding",
-    role: "Software Engineer",
-    description: "Complete onboarding process for new engineering hires",
-    emails: ["alice@company.com", "bob@company.com"],
-    steps: [
-      { title: "Setup Development Environment", description: "Install necessary tools and configure workspace" },
-      { title: "Code Review Process", description: "Learn about the team's code review practices" },
-      { title: "Architecture Overview", description: "Understanding the system architecture" },
-    ],
-  },
-}
+import { getAgent, updateAgent, type Agent, type AgentUpdate } from "@/lib/api"
+import { toast } from "@/components/ui/use-toast"
 
 export default function EditAgent({ params }: { params: { id: string } }) {
-  const agent = MOCK_AGENTS[params.id as keyof typeof MOCK_AGENTS]
-  const [emails, setEmails] = useState<string[]>(agent?.emails || [])
+  const [agent, setAgent] = useState<Agent | null>(null)
+  const [name, setName] = useState("")
+  const [role, setRole] = useState("")
+  const [description, setDescription] = useState("")
+  const [emails, setEmails] = useState<string[]>([])
   const [newEmail, setNewEmail] = useState("")
-  const [steps, setSteps] = useState(agent?.steps || [])
+  const [steps, setSteps] = useState<Array<{ title: string; description: string }>>([])
   const [newStep, setNewStep] = useState({ title: "", description: "" })
+  const router = useRouter()
+
+  useEffect(() => {
+    fetchAgent()
+  }, [])
+
+  const fetchAgent = async () => {
+    try {
+      const fetchedAgent = await getAgent(params.id)
+      setAgent(fetchedAgent)
+      setName(fetchedAgent.name)
+      setRole(fetchedAgent.role)
+      setDescription(fetchedAgent.description || "")
+      setEmails(fetchedAgent.emails || [])
+      setSteps(fetchedAgent.steps || [])
+    } catch (error) {
+      console.error("Failed to fetch agent:", error)
+      toast({
+        title: "Error",
+        description: "Failed to load agent details. Please try again.",
+        variant: "destructive",
+      })
+    }
+  }
 
   const addEmail = (e: React.FormEvent) => {
     e.preventDefault()
@@ -221,7 +237,35 @@ export default function EditAgent({ params }: { params: { id: string } }) {
     setSteps(steps.filter((_, i) => i !== index))
   }
 
-  if (!agent) return <div>Agent not found</div>
+  const handleUpdate = async () => {
+    if (!agent) return
+
+    const updatedAgent: AgentUpdate = {
+      name,
+      role,
+      description,
+      emails,
+      steps,
+    }
+
+    try {
+      await updateAgent(agent._id, updatedAgent)
+      toast({
+        title: "Success",
+        description: "Agent updated successfully.",
+      })
+      router.push(`/admin/agents/${agent._id}`)
+    } catch (error) {
+      console.error("Failed to update agent:", error)
+      toast({
+        title: "Error",
+        description: "Failed to update agent. Please try again.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  if (!agent) return <div>Loading...</div>
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
@@ -236,14 +280,24 @@ export default function EditAgent({ params }: { params: { id: string } }) {
             <Label htmlFor="name" className="text-gray-300">
               Agent Name
             </Label>
-            <Input id="name" defaultValue={agent.name} className="bg-gray-900 border-gray-700 text-gray-200" />
+            <Input
+              id="name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="bg-gray-900 border-gray-700 text-gray-200"
+            />
           </div>
 
           <div className="grid gap-2">
             <Label htmlFor="role" className="text-gray-300">
               Role
             </Label>
-            <Input id="role" defaultValue={agent.role} className="bg-gray-900 border-gray-700 text-gray-200" />
+            <Input
+              id="role"
+              value={role}
+              onChange={(e) => setRole(e.target.value)}
+              className="bg-gray-900 border-gray-700 text-gray-200"
+            />
           </div>
 
           <div className="grid gap-2">
@@ -252,7 +306,8 @@ export default function EditAgent({ params }: { params: { id: string } }) {
             </Label>
             <Textarea
               id="description"
-              defaultValue={agent.description}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
               className="bg-gray-900 border-gray-700 text-gray-200"
             />
           </div>
@@ -350,8 +405,10 @@ export default function EditAgent({ params }: { params: { id: string } }) {
           </div>
 
           <div className="flex justify-end gap-3 mt-6">
-            <Button variant="outline">Cancel</Button>
-            <Button>Save Changes</Button>
+            <Button variant="outline" onClick={() => router.push(`/admin/agents/${agent._id}`)}>
+              Cancel
+            </Button>
+            <Button onClick={handleUpdate}>Save Changes</Button>
           </div>
         </CardContent>
       </Card>
@@ -365,41 +422,46 @@ File: app/admin/agents/[id]/page.tsx
 "use client"
 
 import { useState } from "react"
+import { useRouter } from "next/navigation"
+import { useQuery } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Play, Pencil, MoreHorizontal, ArrowUpRight } from "lucide-react"
+import { Play, Pencil, MoreHorizontal, ChevronDown, ChevronUp } from "lucide-react"
 import Link from "next/link"
-
-// This would come from your database
-const MOCK_AGENTS = {
-  "1": {
-    name: "Engineering Onboarding",
-    creator: "John Doe",
-    steps: 15,
-    employees: [
-      { name: "Alice Johnson", started: "Feb 23, 2024", progress: "8/15", status: "In Progress" },
-      { name: "Bob Smith", started: "Feb 22, 2024", progress: "15/15", status: "Completed" },
-    ],
-  },
-  "2": {
-    name: "Design Onboarding",
-    creator: "Jane Smith",
-    steps: 12,
-    employees: [{ name: "Carol White", started: "Feb 24, 2024", progress: "4/12", status: "In Progress" }],
-  },
-  "3": {
-    name: "Marketing Onboarding",
-    creator: "Shubhayan Srivastava",
-    steps: 10,
-    employees: [{ name: "Alex Chen", started: "Feb 25, 2024", progress: "6/12", status: "In Progress" }],
-  },
-}
+import { ExpandedEmployeeRow } from "@/components/admin/expanded-employee-row"
+import { getAgent } from "@/lib/api"
+import { toast } from "@/components/ui/use-toast"
 
 export default function AgentPage({ params }: { params: { id: string } }) {
-  const agent = MOCK_AGENTS[params.id as keyof typeof MOCK_AGENTS]
   const [activeTab, setActiveTab] = useState("activity")
+  const [expandedRows, setExpandedRows] = useState<string[]>([])
+  const router = useRouter()
 
+  const {
+    data: agent,
+    isLoading,
+    error,
+  } = useQuery({
+    queryKey: ["agent", params.id],
+    queryFn: () => getAgent(params.id),
+  })
+
+  const toggleRowExpansion = (employeeName: string) => {
+    setExpandedRows((prev) =>
+      prev.includes(employeeName) ? prev.filter((name) => name !== employeeName) : [...prev, employeeName],
+    )
+  }
+
+  if (isLoading) return <div>Loading...</div>
+  if (error) {
+    toast({
+      title: "Error",
+      description: "Failed to load agent details. Please try again.",
+      variant: "destructive",
+    })
+    return <div>Error loading agent details.</div>
+  }
   if (!agent) return <div>Agent not found</div>
 
   return (
@@ -409,18 +471,16 @@ export default function AgentPage({ params }: { params: { id: string } }) {
         <div className="flex items-center gap-6 text-sm text-gray-400">
           <div className="flex items-center gap-2">
             <span className="w-6 h-6 rounded-full bg-gray-700" />
-            <span>Created by {agent.creator}</span>
+            <span>Role: {agent.role}</span>
           </div>
-          <div>last modified 2 minutes ago</div>
-          <div>created 3 minutes ago</div>
         </div>
         <div className="flex gap-3 mt-4">
-          <Button variant="secondary" className="gap-2">
+          <Button className="gap-2">
             <Play size={16} />
             Run
           </Button>
           <Link href={`/admin/agents/${params.id}/edit`}>
-            <Button variant="default" className="gap-2 hover:scale-120">
+            <Button variant="outline" className="gap-2">
               <Pencil size={16} />
               Edit
             </Button>
@@ -447,7 +507,7 @@ export default function AgentPage({ params }: { params: { id: string } }) {
       </div>
 
       {activeTab === "activity" && (
-        <Card className="bg-[#1C1C1C] bg-opacity-50 border-gray-800">
+        <Card className="bg-[#1C1C1C] border-gray-800">
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
               <CardTitle className="text-gray-200">Recent Activity</CardTitle>
@@ -460,27 +520,51 @@ export default function AgentPage({ params }: { params: { id: string } }) {
           <CardContent>
             <Table>
               <TableHeader>
-                <TableRow className="border-gray-800 hover:bg-transparent">
+                <TableRow className="border-gray-800">
                   <TableHead className="text-gray-400">Employee</TableHead>
-                  <TableHead className="text-gray-400">Started</TableHead>
+                  <TableHead className="text-gray-400">Email</TableHead>
                   <TableHead className="text-gray-400">Progress</TableHead>
                   <TableHead className="text-gray-400">Status</TableHead>
                   <TableHead className="text-gray-400"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {agent.employees.map((employee, i) => (
-                  <TableRow key={i} className="border-gray-800 hover:bg-muted/10 rounded-xl hover:cursor-pointer">
-                    <TableCell className="text-gray-300">{employee.name}</TableCell>
-                    <TableCell className="text-gray-400">{employee.started}</TableCell>
-                    <TableCell className="text-gray-400">{employee.progress}</TableCell>
-                    <TableCell className="text-gray-300">{employee.status}</TableCell>
-                    <TableCell>
-                      <Button variant="ghost" size="icon">
-                        <ArrowUpRight size={16} />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
+                {agent.emails?.map((email, i) => (
+                  <>
+                    <TableRow
+                      key={i}
+                      className="border-gray-800 cursor-pointer hover:bg-gray-800/50"
+                      onClick={() => toggleRowExpansion(email)}
+                    >
+                      <TableCell className="text-gray-300">{email.split("@")[0]}</TableCell>
+                      <TableCell className="text-gray-400">{email}</TableCell>
+                      <TableCell className="text-gray-400">In Progress</TableCell>
+                      <TableCell className="text-gray-300">Active</TableCell>
+                      <TableCell>
+                        <Button variant="ghost" size="icon">
+                          {expandedRows.includes(email) ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                    {expandedRows.includes(email) && (
+                      <TableRow>
+                        <TableCell colSpan={5} className="bg-gray-800/30 px-4 py-2">
+                          <ExpandedEmployeeRow
+                            employee={{
+                              name: email.split("@")[0],
+                              email: email,
+                              started: "N/A",
+                              progress: "In Progress",
+                              status: "Active",
+                              lastActivity: "N/A",
+                              nextStep: "N/A",
+                              notes: "No additional notes",
+                            }}
+                          />
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </>
                 ))}
               </TableBody>
             </Table>
@@ -489,25 +573,31 @@ export default function AgentPage({ params }: { params: { id: string } }) {
       )}
 
       {activeTab === "workflow" && (
-        <Card className="bg-[#1C1C1C] bg-opacity-50 border-gray-800">
+        <Card className="bg-[#1C1C1C] border-gray-800">
           <CardHeader>
             <CardTitle className="text-gray-200">Workflow</CardTitle>
             <CardDescription>Manage the onboarding workflow for this agent</CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="text-gray-400">Workflow content goes here</p>
+            <ul className="list-disc pl-5 space-y-2">
+              {agent.steps?.map((step, index) => (
+                <li key={index} className="text-gray-300">
+                  <strong>{step.title}</strong>: {step.description}
+                </li>
+              ))}
+            </ul>
           </CardContent>
         </Card>
       )}
 
       {activeTab === "settings" && (
-        <Card className="bg-[#1C1C1C] bg-opacity-50 border-gray-800">
+        <Card className="bg-[#1C1C1C] border-gray-800">
           <CardHeader>
             <CardTitle className="text-gray-200">Settings</CardTitle>
             <CardDescription>Configure agent settings</CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="text-gray-400">Settings content goes here</p>
+            <p className="text-gray-400">{agent.description}</p>
           </CardContent>
         </Card>
       )}
@@ -518,11 +608,13 @@ export default function AgentPage({ params }: { params: { id: string } }) {
 ================
 File: app/admin/create/page.tsx
 ================
+// app/admin/create/page.tsx
 "use client"
 
 import type React from "react"
 
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -530,12 +622,20 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Plus, X, Video } from "lucide-react"
 import { RecordOnboarding } from "@/components/admin/record-onboarding"
+import { useUser } from "@/app/context/UserContext"
+import { createAgent, type AgentCreate } from "@/lib/api"
+import { toast } from "@/components/ui/use-toast"
 
 export default function CreateAgent() {
+  const { user } = useUser()
+  const router = useRouter()
+  const [name, setName] = useState("")
+  const [role, setRole] = useState("")
+  const [description, setDescription] = useState("")
   const [emails, setEmails] = useState<string[]>([])
   const [newEmail, setNewEmail] = useState("")
   const [isRecording, setIsRecording] = useState(false)
-  const [recordedSteps, setRecordedSteps] = useState<string[]>([])
+  const [recordedSteps, setRecordedSteps] = useState<Array<{ title: string; description: string }>>([])
 
   const addEmail = (e: React.FormEvent) => {
     e.preventDefault()
@@ -553,9 +653,43 @@ export default function CreateAgent() {
     setIsRecording(true)
   }
 
-  const handleFinishRecording = (steps: string[]) => {
+  const handleFinishRecording = (steps: Array<{ title: string; description: string }>) => {
     setIsRecording(false)
     setRecordedSteps(steps)
+  }
+
+  const handleCreateAgent = async () => {
+    if (!user) {
+      toast({
+        title: "Error",
+        description: "You must be logged in to create an agent.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    const newAgent: AgentCreate = {
+      name,
+      role,
+      description,
+      emails,
+      steps: recordedSteps,
+    }
+
+    try {
+      await createAgent(newAgent)
+      toast({
+        title: "Success",
+        description: "Agent created successfully.",
+      })
+      router.push("/admin")
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to create agent. Please try again.",
+        variant: "destructive",
+      })
+    }
   }
 
   return (
@@ -567,94 +701,12 @@ export default function CreateAgent() {
           <CardDescription>Configure your new onboarding agent</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="grid gap-2">
-            <Label htmlFor="name" className="text-gray-300">
-              Agent Name
-            </Label>
-            <Input
-              id="name"
-              placeholder="e.g. Engineering Onboarding"
-              className="bg-gray-900 border-gray-700 text-gray-200"
-            />
-          </div>
-
-          <div className="grid gap-2">
-            <Label htmlFor="role" className="text-gray-300">
-              Role
-            </Label>
-            <Input
-              id="role"
-              placeholder="e.g. Software Engineer"
-              className="bg-gray-900 border-gray-700 text-gray-200"
-            />
-          </div>
-
-          <div className="grid gap-2">
-            <Label htmlFor="description" className="text-gray-300">
-              Description
-            </Label>
-            <Textarea
-              id="description"
-              placeholder="Describe the purpose of this onboarding agent..."
-              className="bg-gray-900 border-gray-700 text-gray-200"
-            />
-          </div>
-
-          <div className="grid gap-2">
-            <Label className="text-gray-300">Authorized Employees</Label>
-            <form onSubmit={addEmail} className="flex gap-2">
-              <Input
-                type="email"
-                placeholder="Add employee email"
-                value={newEmail}
-                onChange={(e) => setNewEmail(e.target.value)}
-                className="bg-gray-900 border-gray-700 text-gray-200"
-              />
-              <Button type="submit">
-                <Plus size={16} className="mr-2" />
-                Add
-              </Button>
-            </form>
-            <div className="flex flex-wrap gap-2 mt-2">
-              {emails.map((email) => (
-                <div key={email} className="flex items-center gap-2 bg-gray-800 text-gray-200 px-3 py-1 rounded-full">
-                  {email}
-                  <button onClick={() => removeEmail(email)} className="text-gray-400 hover:text-gray-200">
-                    <X size={14} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="grid gap-2">
-            <Label className="text-gray-300">Onboarding Workflow</Label>
-            {recordedSteps.length > 0 ? (
-              <div className="space-y-2">
-                <p className="text-sm text-gray-400">AI-generated workflow based on your recording:</p>
-                <ul className="list-disc pl-5 space-y-1">
-                  {recordedSteps.map((step, index) => (
-                    <li key={index} className="text-gray-300">
-                      {step}
-                    </li>
-                  ))}
-                </ul>
-                <Button onClick={handleStartRecording} className="mt-2">
-                  <Video size={16} className="mr-2" />
-                  Record Again
-                </Button>
-              </div>
-            ) : (
-              <Button onClick={handleStartRecording}>
-                <Video size={16} className="mr-2" />
-                Record Onboarding Process
-              </Button>
-            )}
-          </div>
-
+          {/* ... form fields for name, role, description, emails, and recording workflow ... */}
           <div className="flex justify-end gap-3 mt-6">
-            <Button variant="outline">Cancel</Button>
-            <Button>Create Agent</Button>
+            <Button variant="outline" onClick={() => router.push("/admin")}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreateAgent}>Create Agent</Button>
           </div>
         </CardContent>
       </Card>
@@ -667,17 +719,46 @@ export default function CreateAgent() {
 ================
 File: app/admin/users/page.tsx
 ================
+// app/admin/users/page.tsx
+"use client"
+
+import { useQuery } from "@tanstack/react-query"
 import { UserManagement } from "@/components/admin/user-management"
+import { useUser } from "@/app/context/UserContext"
+import { getUsers } from "@/lib/api"
+import { toast } from "@/components/ui/use-toast"
 
 export default function UsersPage() {
+  const { user } = useUser()
+
+  const {
+    data: users,
+    isLoading,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ["users"],
+    queryFn: () => getUsers(),
+  })
+
+  if (isLoading) return <div>Loading...</div>
+  if (error) {
+    toast({
+      title: "Error",
+      description: "Failed to load users. Please try again.",
+      variant: "destructive",
+    })
+    return <div>Error loading users.</div>
+  }
+
   return (
     <div className="p-6">
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-white">User Management</h1>
-        <p className="text-gray-400">Add, edit, or remove users from your organization</p>
+        <p className="text-gray-400">Add, edit, or remove users</p>
       </div>
 
-      <UserManagement />
+      <UserManagement users={users || []} onUserChange={refetch} />
     </div>
   )
 }
@@ -719,22 +800,35 @@ export default function AdminLayout({
 ================
 File: app/admin/page.tsx
 ================
+// app/admin/page.tsx
+"use client"
+
+import { useQuery } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { ArrowUpRight, Users, Activity, CheckCircle } from "lucide-react"
+import { useUser } from "../context/UserContext"
+import { getAgents } from "@/lib/api"
 
 export default function AdminDashboard() {
+  const { user } = useUser()
+
+  const { data: agents } = useQuery({
+    queryKey: ["agents"],
+    queryFn: () => getAgents(),
+  })
+
   return (
     <div className="min-h-screen">
       <div className="p-6">
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-white">Dashboard</h1>
-          <p className="text-gray-400">Welcome back, Admin</p>
+          <p className="text-gray-400">Welcome back, {user?.email}</p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           {[
-            { title: "Active Onboardings", value: "12", change: "+2", icon: Users },
+            { title: "Active Onboardings", value: agents?.length.toString() || "0", change: "+2", icon: Users },
             { title: "Completion Rate", value: "85%", change: "+5%", icon: Activity },
             { title: "Completed Today", value: "8", change: "+3", icon: CheckCircle },
           ].map((stat, index) => (
@@ -768,21 +862,14 @@ export default function AdminDashboard() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {[
-                  { name: "Alice Johnson", role: "Software Engineer", time: "2h ago", status: "In Progress" },
-                  { name: "Bob Smith", role: "Product Designer", time: "5h ago", status: "Completed" },
-                  { name: "Carol White", role: "Marketing Manager", time: "1d ago", status: "In Progress" },
-                ].map((activity, index) => (
+                {agents?.slice(0, 3).map((agent, index) => (
                   <div key={index} className="flex items-center justify-between py-2">
                     <div>
-                      <p className="font-medium text-white">{activity.name}</p>
-                      <p className="text-sm text-gray-400">{activity.role}</p>
+                      <p className="font-medium text-white">{agent.name}</p>
+                      <p className="text-sm text-gray-400">{agent.role}</p>
                     </div>
                     <div className="text-right">
-                      <p className="text-sm text-gray-400">{activity.time}</p>
-                      <p className={`text-sm ${activity.status === "Completed" ? "text-green-400" : "text-blue-400"}`}>
-                        {activity.status}
-                      </p>
+                      <p className="text-sm text-gray-400">Active</p>
                     </div>
                   </div>
                 ))}
@@ -797,18 +884,14 @@ export default function AdminDashboard() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {[
-                  { name: "Engineering Onboarding", active: 5, total: 15 },
-                  { name: "Design Onboarding", active: 3, total: 8 },
-                  { name: "Marketing Onboarding", active: 2, total: 6 },
-                ].map((agent, index) => (
+                {agents?.map((agent, index) => (
                   <div key={index} className="flex items-center justify-between py-2">
                     <div>
                       <p className="font-medium text-white">{agent.name}</p>
-                      <p className="text-sm text-gray-400">{agent.active} active sessions</p>
+                      <p className="text-sm text-gray-400">{agent.emails?.length || 0} active sessions</p>
                     </div>
                     <div className="text-right">
-                      <p className="text-sm text-gray-400">{agent.total} total employees</p>
+                      <p className="text-sm text-gray-400">{agent.emails?.length || 0} total employees</p>
                     </div>
                   </div>
                 ))}
@@ -827,24 +910,46 @@ File: app/context/UserContext.tsx
 "use client"
 
 import type React from "react"
-import { createContext, useState, useContext } from "react"
-
-type User = {
-  email: string
-  isAdmin: boolean
-} | null
+import { createContext, useState, useContext, useEffect } from "react"
+import { type User, loginUser } from "@/lib/api"
 
 type UserContextType = {
-  user: User
-  setUser: React.Dispatch<React.SetStateAction<User>>
+  user: User | null
+  setUser: React.Dispatch<React.SetStateAction<User | null>>
+  login: (email: string, password: string) => Promise<void>
+  logout: () => void
 }
 
 const UserContext = createContext<UserContextType | undefined>(undefined)
 
 export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User>(null)
+  const [user, setUser] = useState<User | null>(null)
 
-  return <UserContext.Provider value={{ user, setUser }}>{children}</UserContext.Provider>
+  useEffect(() => {
+    // Check for stored user data on component mount
+    const storedUser = localStorage.getItem("user")
+    if (storedUser) {
+      setUser(JSON.parse(storedUser))
+    }
+  }, [])
+
+  const login = async (email: string, password: string) => {
+    try {
+      const loggedInUser = await loginUser(email, password)
+      setUser(loggedInUser)
+      localStorage.setItem("user", JSON.stringify(loggedInUser))
+    } catch (error) {
+      console.error("Login failed:", error)
+      throw error
+    }
+  }
+
+  const logout = () => {
+    setUser(null)
+    localStorage.removeItem("user")
+  }
+
+  return <UserContext.Provider value={{ user, setUser, login, logout }}>{children}</UserContext.Provider>
 }
 
 export const useUser = () => {
@@ -866,7 +971,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { GradientBackground } from "@/components/gradient-background"
-import { EmployeeSidebar } from "@/components/employee/sidebar"
+import { Sidebar } from "@/components/employee/sidebar"
 import { EmployeeHeader } from "@/components/employee/header"
 import { ArrowRight, BookOpen, CheckCircle2, FileText, MessageSquare, Play } from "lucide-react"
 
@@ -878,7 +983,7 @@ export default function EmployeeDashboard() {
     <div className="min-h-screen bg-black text-gray-100">
       <GradientBackground />
       <div className="flex h-screen overflow-hidden">
-        <EmployeeSidebar />
+        <Sidebar />
         <div className="flex-1 overflow-auto">
           <EmployeeHeader />
           <main className="p-6">
@@ -1023,6 +1128,7 @@ File: app/login/page.tsx
 "use client"
 
 import type React from "react"
+
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { useUser } from "@/app/context/UserContext"
@@ -1030,26 +1136,32 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { GradientBackground } from "@/components/gradient-background"
+import { toast } from "@/components/ui/use-toast"
 
 export default function Login() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
-  const { setUser } = useUser()
+  const { login } = useUser()
   const router = useRouter()
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
-    // In a real app, you'd validate the email and check if it's an admin
-    const isAdmin = email.endsWith("@admin.com")
-    setUser({ email, isAdmin })
-    router.push(isAdmin ? "/admin" : "/employee")
+    try {
+      await login(email, password)
+      router.push("/admin")
+    } catch (error) {
+      toast({
+        title: "Login Failed",
+        description: "Invalid email or password. Please try again.",
+        variant: "destructive",
+      })
+    }
   }
 
   return (
     <div className="min-h-screen flex items-center justify-center">
       <GradientBackground />
       <div className="w-full max-w-md p-6 relative z-10">
-
         <div className="bg-black/40 backdrop-blur-xl rounded-xl p-6 border border-white/10">
           <div className="mb-8 text-center">
             <h1 className="text-3xl font-bold text-white mb-2">Welcome back</h1>
@@ -1070,7 +1182,6 @@ export default function Login() {
                 required
               />
             </div>
-
             <div className="space-y-2">
               <Label htmlFor="password" className="text-gray-300">
                 Password
@@ -1084,33 +1195,10 @@ export default function Login() {
                 required
               />
             </div>
-
             <Button type="submit" className="w-full bg-white text-black hover:bg-gray-100">
               Sign In
             </Button>
           </form>
-
-          <div className="mt-6">
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-white/10"></div>
-              </div>
-              <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-black/40 px-2 text-gray-400">Or continue with</span>
-              </div>
-            </div>
-
-            <Button variant="outline" className="w-full mt-4 border-white/10 text-white hover:bg-white/10">
-              Google
-            </Button>
-          </div>
-
-          <p className="mt-4 text-center text-sm text-gray-400">
-            Don't have an account?{" "}
-            <a href="#" className="text-white hover:underline">
-              Sign up
-            </a>
-          </p>
         </div>
       </div>
     </div>
@@ -1202,7 +1290,18 @@ File: app/layout.tsx
 ================
 import type React from "react"
 import "./globals.css"
+import { Inter } from "next/font/google"
 import { UserProvider } from "./context/UserContext"
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+
+const inter = Inter({ subsets: ["latin"] })
+
+const queryClient = new QueryClient()
+
+export const metadata = {
+  title: "AI Onboarding Manager",
+  description: "Streamline your employee onboarding process with AI",
+}
 
 export default function RootLayout({
   children,
@@ -1211,15 +1310,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>
-        <div className="relative min-h-screen">
-        <UserProvider>
-            {/* Content */}
-            <div className="relative z-10 min-h-screen">
-              {children}
-            </div>
-          </UserProvider>
-        </div>
+      <body className={inter.className}>
+        <QueryClientProvider client={queryClient}>
+          <UserProvider>{children}</UserProvider>
+        </QueryClientProvider>
       </body>
     </html>
   )
@@ -1231,6 +1325,7 @@ File: app/page.tsx
 "use client"
 
 import type React from "react"
+
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { useUser } from "./context/UserContext"
@@ -1238,26 +1333,32 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { GradientBackground } from "@/components/gradient-background"
+import { toast } from "@/components/ui/use-toast"
 
 export default function Login() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
-  const { setUser } = useUser()
+  const { login } = useUser()
   const router = useRouter()
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
-    // In a real app, you'd validate the email and check if it's an admin
-    const isAdmin = email.endsWith("@admin.com")
-    setUser({ email, isAdmin })
-    router.push(isAdmin ? "/admin" : "/employee")
+    try {
+      await login(email, password)
+      router.push("/admin")
+    } catch (error) {
+      toast({
+        title: "Login Failed",
+        description: "Invalid email or password. Please try again.",
+        variant: "destructive",
+      })
+    }
   }
 
   return (
     <div className="min-h-screen flex items-center justify-center">
       <GradientBackground />
       <div className="w-full max-w-md p-6 relative z-10">
-
         <div className="bg-black/40 backdrop-blur-xl rounded-xl p-6 border border-white/10">
           <div className="mb-8 text-center">
             <h1 className="text-3xl font-bold text-white mb-2">Welcome back</h1>
@@ -1278,7 +1379,6 @@ export default function Login() {
                 required
               />
             </div>
-
             <div className="space-y-2">
               <Label htmlFor="password" className="text-gray-300">
                 Password
@@ -1292,36 +1392,73 @@ export default function Login() {
                 required
               />
             </div>
-
             <Button type="submit" className="w-full bg-white text-black hover:bg-gray-100">
               Sign In
             </Button>
           </form>
-
-          <div className="mt-6">
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-white/10"></div>
-              </div>
-              <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-black/40 px-2 text-gray-400">Or continue with</span>
-              </div>
-            </div>
-
-            <Button variant="outline" className="w-full mt-4 border-white/10 text-white hover:bg-white/10">
-              Google
-            </Button>
-          </div>
-
-          <p className="mt-4 text-center text-sm text-gray-400">
-            Don't have an account?{" "}
-            <a href="#" className="text-white hover:underline">
-              Sign up
-            </a>
-          </p>
         </div>
       </div>
     </div>
+  )
+}
+
+================
+File: components/admin/expanded-employee-row.tsx
+================
+import { Card, CardContent } from "@/components/ui/card"
+import { Progress } from "@/components/ui/progress"
+
+interface Employee {
+  name: string
+  email: string
+  started: string
+  progress: string
+  status: string
+  lastActivity: string
+  nextStep: string
+  notes: string
+}
+
+interface ExpandedEmployeeRowProps {
+  employee: Employee
+}
+
+export function ExpandedEmployeeRow({ employee }: ExpandedEmployeeRowProps) {
+  const progressPercentage =
+    (Number.parseInt(employee.progress.split("/")[0]) / Number.parseInt(employee.progress.split("/")[1])) * 100
+
+  return (
+    <Card className="bg-gray-800/50 border-gray-700">
+      <CardContent className="p-4 space-y-4">
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <h4 className="text-sm font-medium text-gray-400">Email</h4>
+            <p className="text-gray-200">{employee.email}</p>
+          </div>
+          <div>
+            <h4 className="text-sm font-medium text-gray-400">Started</h4>
+            <p className="text-gray-200">{employee.started}</p>
+          </div>
+        </div>
+        <div>
+          <h4 className="text-sm font-medium text-gray-400 mb-2">Progress</h4>
+          <Progress value={progressPercentage} className="h-2" />
+          <p className="text-sm text-gray-400 mt-1">{employee.progress} steps completed</p>
+        </div>
+        <div>
+          <h4 className="text-sm font-medium text-gray-400">Last Activity</h4>
+          <p className="text-gray-200">{employee.lastActivity}</p>
+        </div>
+        <div>
+          <h4 className="text-sm font-medium text-gray-400">Next Step</h4>
+          <p className="text-gray-200">{employee.nextStep}</p>
+        </div>
+        <div>
+          <h4 className="text-sm font-medium text-gray-400">Notes</h4>
+          <p className="text-gray-200">{employee.notes}</p>
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -1335,8 +1472,13 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Mic, StopCircle } from "lucide-react"
 
+interface Step {
+  title: string;
+  description: string;
+}
+
 interface RecordOnboardingProps {
-  onFinish: (steps: string[]) => void
+  onFinish: (steps: Step[]) => void
 }
 
 export function RecordOnboarding({ onFinish }: RecordOnboardingProps) {
@@ -1367,12 +1509,12 @@ export function RecordOnboarding({ onFinish }: RecordOnboardingProps) {
     setIsRecording(false)
     // Simulate AI processing
     setTimeout(() => {
-      const generatedSteps = [
-        "Introduction to company culture and values",
-        "Setup of development environment",
-        "Overview of project structure and architecture",
-        "Introduction to team members and communication channels",
-        "Review of coding standards and best practices",
+      const generatedSteps: Step[] = [
+        { title: "Introduction to company culture and values", description: "Learn about the company culture and values." },
+        { title: "Setup of development environment", description: "Configure your development tools and environment." },
+        { title: "Overview of project structure and architecture", description: "Understand the project structure and architecture." },
+        { title: "Introduction to team members and communication channels", description: "Meet your team and learn communication channels." },
+        { title: "Review of coding standards and best practices", description: "Review coding standards and best practices." },
       ]
       onFinish(generatedSteps)
     }, 2000)
@@ -1393,7 +1535,8 @@ export function RecordOnboarding({ onFinish }: RecordOnboardingProps) {
             </p>
             {isRecording && (
               <p className="text-red-500 font-semibold">
-                Recording: {Math.floor(recordingTime / 60)}:{recordingTime % 60 < 10 ? "0" : ""}
+                Recording: {Math.floor(recordingTime / 60)}:
+                {recordingTime % 60 < 10 ? "0" : ""}
                 {recordingTime % 60}
               </p>
             )}
@@ -1428,34 +1571,54 @@ import { Home, Plus, Users, LogOut, Settings } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-
-type Agent = {
-  id: string
-  name: string
-  steps: number
-  lastModified: string
-}
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { useUser } from "@/app/context/UserContext"
+import { useRouter } from "next/navigation"
+import { useQuery } from "@tanstack/react-query"
+import { getAgents } from "@/lib/api"
 
 export function Sidebar() {
   const pathname = usePathname()
-  const agents: Agent[] = [
-    { id: "1", name: "Engineering Onboarding", steps: 15, lastModified: "2m" },
-    { id: "2", name: "Design Onboarding", steps: 12, lastModified: "1h" },
-    { id: "3", name: "Marketing Onboarding", steps: 10, lastModified: "2d" },
-  ]
+  const { user, logout } = useUser()
+  const router = useRouter()
+
+  // Now simply fetching all agents without organization filtering.
+  const { data: agents } = useQuery({
+    queryKey: ["agents"],
+    queryFn: () => getAgents(),
+    enabled: !!user,
+  })
+
+  const handleLogout = () => {
+    logout()
+    router.push("/login")
+  }
 
   return (
     <div className="w-80 border-r border-gray-800 backdrop-blur-sm bg-black/60 text-gray-300 p-4 flex flex-col h-screen">
-      <Link href="/admin" className="flex items-center gap-2 px-2 py-1.5 mb-6 text-gray-300 hover:text-white">
+      <Link
+        href="/admin"
+        className="flex items-center gap-2 px-2 py-1.5 mb-6 text-gray-300 hover:text-white"
+      >
         <Home size={20} />
         <span>Home</span>
       </Link>
 
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-sm font-semibold tracking-wider text-gray-500">AGENTS</h2>
+        <h2 className="text-sm font-semibold tracking-wider text-gray-500">
+          AGENTS
+        </h2>
         <Link href="/admin/create">
-          <Button variant="ghost" size="sm" className="h-8 px-2 text-gray-400 hover:text-white hover:bg-muted/30">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 px-2 text-gray-400 hover:text-white hover:bg-muted/30"
+          >
             <Plus size={16} />
             Create Agent
           </Button>
@@ -1463,25 +1626,35 @@ export function Sidebar() {
       </div>
 
       <div className="space-y-1 flex-grow overflow-auto">
-        {agents.map((agent) => (
+        {agents?.map((agent) => (
           <Link
-            key={agent.id}
-            href={`/admin/agents/${agent.id}`}
+            key={agent._id}
+            href={`/admin/agents/${agent._id}`}
             className={cn(
               "block p-3 rounded-lg text-md transition-colors",
-              pathname === `/admin/agents/${agent.id}`
+              pathname === `/admin/agents/${agent._id}`
                 ? "bg-gray-800/60 text-white"
-                : "hover:bg-gray-800/50 text-gray-400",
+                : "hover:bg-gray-800/50 text-gray-400"
             )}
           >
             <div className="font-medium mb-1">{agent.name}</div>
             <div className="flex items-center text-xs text-gray-500">
-              <span>STEPS: {agent.steps}</span>
-              <span className="ml-auto">{agent.lastModified}</span>
+              <span>ROLE: {agent.role}</span>
             </div>
           </Link>
         ))}
       </div>
+
+      <Link
+        href="/admin/users"
+        className={cn(
+          "flex items-center gap-2 px-3 py-2 rounded-md text-gray-300 hover:bg-white/10 hover:text-white transition-colors",
+          pathname === "/admin/users" ? "bg-gray-800/60 text-white" : ""
+        )}
+      >
+        <Users size={18} />
+        <span>Manage Users</span>
+      </Link>
 
       <div className="mt-auto pt-4 border-t border-gray-800">
         <DropdownMenu>
@@ -1491,27 +1664,51 @@ export function Sidebar() {
               className="w-full flex items-center justify-start px-2 py-3 hover:bg-gray-800/50 rounded-lg"
             >
               <Avatar className="w-9 h-9 mr-3 border border-gray-700">
-                <AvatarImage src="/placeholder.svg?height=36&width=36" alt="Admin" />
-                <AvatarFallback className="bg-gradient-to-r from-blue-500 to-purple-600 text-white">AD</AvatarFallback>
+                <AvatarImage
+                  src="/placeholder.svg?height=36&width=36"
+                  alt="Admin"
+                />
+                <AvatarFallback className="bg-gradient-to-r from-blue-500 to-purple-600 text-white">
+                  {user?.email.charAt(0).toUpperCase()}
+                </AvatarFallback>
               </Avatar>
               <div className="flex flex-col items-start overflow-hidden">
-                <span className="text-sm font-medium text-gray-200">Admin User</span>
-                <span className="text-xs text-gray-500 truncate w-full">admin@example.com</span>
+                <span className="text-sm font-medium text-gray-200">
+                  {user?.email}
+                </span>
+                <span className="text-xs text-gray-500 truncate w-full">
+                  {user?.role}
+                </span>
               </div>
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent className="w-56 bg-gray-900 border-gray-700 text-gray-200" align="end" forceMount>
+          <DropdownMenuContent
+            className="w-56 bg-gray-900 border-gray-700 text-gray-200"
+            align="end"
+            forceMount
+          >
             <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer focus:bg-gray-800">
-              <Link href="/admin/users" className="flex items-center w-full">
-                <Settings className="mr-2 h-4 w-4 text-gray-400" />
-                <span>Manage Users</span>
+              <Link href="/admin/profile" className="flex items-center w-full">
+                <Avatar className="w-4 h-4 mr-2">
+                  <AvatarFallback className="bg-gradient-to-r from-blue-500 to-purple-600 text-white text-[10px]">
+                    {user?.email.charAt(0).toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+                <span>Profile</span>
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer focus:bg-gray-800">
-              <Link href="/login" className="flex items-center w-full">
-                <LogOut className="mr-2 h-4 w-4 text-gray-400" />
-                <span>Log out</span>
+              <Link href="/admin/settings" className="flex items-center w-full">
+                <Settings className="mr-2 h-4 w-4 text-gray-400" />
+                <span>Settings</span>
               </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="hover:bg-gray-800 cursor-pointer focus:bg-gray-800"
+              onSelect={handleLogout}
+            >
+              <LogOut className="mr-2 h-4 w-4 text-gray-400" />
+              <span>Log out</span>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -1525,11 +1722,24 @@ File: components/admin/user-management.tsx
 ================
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Table, TableBody, TableCell, TableHead, TableRow, TableHeader } from "@/components/ui/table"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
+  TableHeader,
+} from "@/components/ui/table"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
 import { Plus, Pencil, Trash, Search } from "lucide-react"
 import {
   Dialog,
@@ -1552,58 +1762,101 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 import { Label } from "@/components/ui/label"
+import { type User, type UserCreate, createUser, updateUser, deleteUser } from "@/lib/api"
+import { useUser } from "@/app/context/UserContext"
+import { toast } from "@/components/ui/use-toast"
 
-type User = {
-  id: string
-  name: string
-  email: string
-  role: "Employee" | "Admin"
+interface UserManagementProps {
+  users: User[]
+  onUserChange: () => void
 }
 
-// Mock data for users
-const MOCK_USERS: User[] = [
-  { id: "1", name: "John Doe", email: "john@example.com", role: "Employee" },
-  { id: "2", name: "Jane Smith", email: "jane@example.com", role: "Admin" },
-  { id: "3", name: "Bob Johnson", email: "bob@example.com", role: "Employee" },
-]
-
-export function UserManagement() {
-  const [users, setUsers] = useState<User[]>(MOCK_USERS)
-  const [filteredUsers, setFilteredUsers] = useState<User[]>(MOCK_USERS)
-  const [newUser, setNewUser] = useState<Omit<User, "id">>({ name: "", email: "", role: "Employee" })
+export function UserManagement({ users, onUserChange }: UserManagementProps) {
+  const { user: currentUser } = useUser()
+  const [filteredUsers, setFilteredUsers] = useState<User[]>(users)
+  // Removed organization_id from newUser initial state.
+  const [newUser, setNewUser] = useState<UserCreate>({
+    email: "",
+    role: "Employee",
+    password: "",
+  })
   const [editingUser, setEditingUser] = useState<User | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
 
-  useEffect(() => {
-    const lowercasedSearch = searchTerm.toLowerCase()
+  const handleSearch = (term: string) => {
+    setSearchTerm(term)
+    const lowercasedSearch = term.toLowerCase()
     const filtered = users.filter(
       (user) =>
-        user.name.toLowerCase().includes(lowercasedSearch) ||
         user.email.toLowerCase().includes(lowercasedSearch) ||
-        user.role.toLowerCase().includes(lowercasedSearch),
+        user.role.toLowerCase().includes(lowercasedSearch)
     )
     setFilteredUsers(filtered)
-  }, [users, searchTerm])
+  }
 
-  const addUser = () => {
-    if (newUser.name && newUser.email) {
-      const newId = String(Math.max(...users.map((u) => Number.parseInt(u.id))) + 1)
-      setUsers([...users, { ...newUser, id: newId }])
-      setNewUser({ name: "", email: "", role: "Employee" })
+  const addUser = async () => {
+    if (newUser.email && newUser.role) {
+      try {
+        await createUser(newUser)
+        onUserChange()
+        setNewUser({ email: "", role: "Employee", password: "" })
+        toast({
+          title: "Success",
+          description: "User added successfully.",
+        })
+      } catch (error) {
+        console.error("Failed to add user:", error)
+        toast({
+          title: "Error",
+          description: "Failed to add user. Please try again.",
+          variant: "destructive",
+        })
+      }
     }
   }
 
-  const updateUser = () => {
+  const updateUserHandler = async () => {
     if (editingUser) {
-      setUsers(users.map((user) => (user.id === editingUser.id ? editingUser : user)))
-      setEditingUser(null)
-      setIsEditDialogOpen(false)
+      try {
+        await updateUser(editingUser._id, {
+          email: editingUser.email,
+          role: editingUser.role,
+        })
+        onUserChange()
+        setEditingUser(null)
+        setIsEditDialogOpen(false)
+        toast({
+          title: "Success",
+          description: "User updated successfully.",
+        })
+      } catch (error) {
+        console.error("Failed to update user:", error)
+        toast({
+          title: "Error",
+          description: "Failed to update user. Please try again.",
+          variant: "destructive",
+        })
+      }
     }
   }
 
-  const deleteUser = (id: string) => {
-    setUsers(users.filter((user) => user.id !== id))
+  const deleteUserHandler = async (id: string) => {
+    try {
+      await deleteUser(id)
+      onUserChange()
+      toast({
+        title: "Success",
+        description: "User deleted successfully.",
+      })
+    } catch (error) {
+      console.error("Failed to delete user:", error)
+      toast({
+        title: "Error",
+        description: "Failed to delete user. Please try again.",
+        variant: "destructive",
+      })
+    }
   }
 
   return (
@@ -1616,12 +1869,6 @@ export function UserManagement() {
         <div className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <Input
-              placeholder="Name"
-              value={newUser.name}
-              onChange={(e) => setNewUser({ ...newUser, name: e.target.value })}
-              className="bg-gray-900 border-gray-700 text-gray-200"
-            />
-            <Input
               placeholder="Email"
               value={newUser.email}
               onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
@@ -1629,12 +1876,21 @@ export function UserManagement() {
             />
             <select
               value={newUser.role}
-              onChange={(e) => setNewUser({ ...newUser, role: e.target.value as "Employee" | "Admin" })}
+              onChange={(e) =>
+                setNewUser({ ...newUser, role: e.target.value as "Employee" | "Admin" })
+              }
               className="bg-gray-900 border-gray-700 text-gray-200 rounded-md px-3 py-2"
             >
               <option value="Employee">Employee</option>
               <option value="Admin">Admin</option>
             </select>
+            <Input
+              type="password"
+              placeholder="Password"
+              value={newUser.password}
+              onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
+              className="bg-gray-900 border-gray-700 text-gray-200"
+            />
             <Button
               onClick={addUser}
               className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700"
@@ -1648,7 +1904,7 @@ export function UserManagement() {
             <Input
               placeholder="Search users..."
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => handleSearch(e.target.value)}
               className="bg-gray-900 border-gray-700 text-gray-200 pl-10"
             />
           </div>
@@ -1657,21 +1913,25 @@ export function UserManagement() {
             <Table>
               <TableHeader className="bg-gray-900/50">
                 <TableRow className="hover:bg-transparent border-gray-800">
-                  <TableHead className="text-gray-400 font-medium">Name</TableHead>
                   <TableHead className="text-gray-400 font-medium">Email</TableHead>
                   <TableHead className="text-gray-400 font-medium">Role</TableHead>
-                  <TableHead className="text-gray-400 font-medium text-right">Actions</TableHead>
+                  <TableHead className="text-gray-400 font-medium text-right">
+                    Actions
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredUsers.map((user) => (
-                  <TableRow key={user.id} className="border-gray-800 hover:bg-gray-800/30">
-                    <TableCell className="font-medium text-gray-300">{user.name}</TableCell>
-                    <TableCell className="text-gray-300">{user.email}</TableCell>
+                  <TableRow key={user._id} className="border-gray-800 hover:bg-gray-800/30">
+                    <TableCell className="font-medium text-gray-300">
+                      {user.email}
+                    </TableCell>
                     <TableCell>
                       <span
                         className={`px-2 py-1 rounded-full text-xs ${
-                          user.role === "Admin" ? "bg-purple-500/20 text-purple-300" : "bg-blue-500/20 text-blue-300"
+                          user.role === "Admin"
+                            ? "bg-purple-500/20 text-purple-300"
+                            : "bg-blue-500/20 text-blue-300"
                         }`}
                       >
                         {user.role}
@@ -1699,26 +1959,15 @@ export function UserManagement() {
                           <div className="grid gap-4 py-4">
                             <div className="grid grid-cols-4 items-center gap-4">
                               <Label htmlFor="name" className="text-right">
-                                Name
-                              </Label>
-                              <Input
-                                id="name"
-                                value={editingUser?.name ?? ""}
-                                onChange={(e) =>
-                                  setEditingUser((prev) => (prev ? { ...prev, name: e.target.value } : null))
-                                }
-                                className="col-span-3 bg-gray-800 border-gray-700"
-                              />
-                            </div>
-                            <div className="grid grid-cols-4 items-center gap-4">
-                              <Label htmlFor="email" className="text-right">
                                 Email
                               </Label>
                               <Input
                                 id="email"
                                 value={editingUser?.email ?? ""}
                                 onChange={(e) =>
-                                  setEditingUser((prev) => (prev ? { ...prev, email: e.target.value } : null))
+                                  setEditingUser((prev) =>
+                                    prev ? { ...prev, email: e.target.value } : null
+                                  )
                                 }
                                 className="col-span-3 bg-gray-800 border-gray-700"
                               />
@@ -1732,7 +1981,9 @@ export function UserManagement() {
                                 value={editingUser?.role ?? "Employee"}
                                 onChange={(e) =>
                                   setEditingUser((prev) =>
-                                    prev ? { ...prev, role: e.target.value as "Employee" | "Admin" } : null,
+                                    prev
+                                      ? { ...prev, role: e.target.value as "Employee" | "Admin" }
+                                      : null
                                   )
                                 }
                                 className="col-span-3 bg-gray-800 border-gray-700 rounded-md px-3 py-2"
@@ -1743,7 +1994,7 @@ export function UserManagement() {
                             </div>
                           </div>
                           <DialogFooter>
-                            <Button onClick={updateUser} className="bg-blue-500 hover:bg-blue-600">
+                            <Button onClick={updateUserHandler} className="bg-blue-500 hover:bg-blue-600">
                               Save changes
                             </Button>
                           </DialogFooter>
@@ -1761,10 +2012,11 @@ export function UserManagement() {
                         </AlertDialogTrigger>
                         <AlertDialogContent className="bg-gray-900 text-gray-200">
                           <AlertDialogHeader>
-                            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                            <AlertDialogTitle>
+                              Are you absolutely sure?
+                            </AlertDialogTitle>
                             <AlertDialogDescription>
-                              This action cannot be undone. This will permanently delete the user account and remove
-                              their data from our servers.
+                              This action cannot be undone. This will permanently delete the user account.
                             </AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>
@@ -1773,7 +2025,7 @@ export function UserManagement() {
                             </AlertDialogCancel>
                             <AlertDialogAction
                               className="bg-red-600 hover:bg-red-700"
-                              onClick={() => deleteUser(user.id)}
+                              onClick={() => deleteUserHandler(user._id)}
                             >
                               Delete
                             </AlertDialogAction>
@@ -1836,31 +2088,156 @@ export function EmployeeHeader() {
 ================
 File: components/employee/sidebar.tsx
 ================
-import Link from "next/link"
-import { Home, BookOpen, Users, MessageSquare, Settings } from "lucide-react"
+"use client"
 
-export function EmployeeSidebar() {
+import Link from "next/link"
+import { usePathname } from "next/navigation"
+import { Home, Plus, Users, LogOut, Settings } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { useUser } from "@/app/context/UserContext"
+import { useRouter } from "next/navigation"
+import { useEffect, useState } from "react"
+import { getAgents, type Agent } from "@/lib/api"
+
+export function Sidebar() {
+  const pathname = usePathname()
+  const { user, logout } = useUser()
+  const router = useRouter()
+  const [agents, setAgents] = useState<Agent[]>([])
+
+  useEffect(() => {
+    if (user) {
+      fetchAgents()
+    }
+  }, [user])
+
+  const fetchAgents = async () => {
+    try {
+      // Fetch all agents without filtering by organization.
+      const fetchedAgents = await getAgents()
+      setAgents(fetchedAgents)
+    } catch (error) {
+      console.error("Failed to fetch agents:", error)
+    }
+  }
+
+  const handleLogout = () => {
+    logout()
+    router.push("/login")
+  }
+
   return (
-    <aside className="w-64 bg-black/40 backdrop-blur-xl border-r border-white/10 p-4">
-      <nav className="space-y-2">
-        {[
-          { icon: Home, label: "Dashboard", href: "/employee" },
-          { icon: BookOpen, label: "Learning Path", href: "/employee/learning" },
-          { icon: Users, label: "Team", href: "/employee/team" },
-          { icon: MessageSquare, label: "Chat", href: "/employee/chat" },
-          { icon: Settings, label: "Settings", href: "/employee/settings" },
-        ].map((item) => (
-          <Link
-            key={item.href}
-            href={item.href}
-            className="flex items-center gap-3 px-3 py-2 rounded-md text-gray-300 hover:bg-white/10 hover:text-white transition-colors"
+    <div className="w-80 border-r border-gray-800 backdrop-blur-sm bg-black/60 text-gray-300 p-4 flex flex-col h-screen">
+      <Link
+        href="/employee"
+        className="flex items-center gap-2 px-2 py-1.5 mb-6 text-gray-300 hover:text-white"
+      >
+        <Home size={20} />
+        <span>Home</span>
+      </Link>
+
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-sm font-semibold tracking-wider text-gray-500">
+          AGENTS
+        </h2>
+        <Link href="/employee/create">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 px-2 text-gray-400 hover:text-white hover:bg-muted/30"
           >
-            <item.icon className="h-5 w-5" />
-            <span>{item.label}</span>
+            <Plus size={16} />
+            Create Agent
+          </Button>
+        </Link>
+      </div>
+
+      <div className="space-y-1 flex-grow overflow-auto">
+        {agents.map((agent) => (
+          <Link
+            key={agent._id}
+            href={`/employee/agents/${agent._id}`}
+            className={cn(
+              "block p-3 rounded-lg text-md transition-colors",
+              pathname === `/employee/agents/${agent._id}`
+                ? "bg-gray-800/60 text-white"
+                : "hover:bg-gray-800/50 text-gray-400"
+            )}
+          >
+            <div className="font-medium mb-1">{agent.name}</div>
+            <div className="flex items-center text-xs text-gray-500">
+              <span>ROLE: {agent.role}</span>
+            </div>
           </Link>
         ))}
-      </nav>
-    </aside>
+      </div>
+
+      <div className="mt-auto pt-4 border-t border-gray-800">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              className="w-full flex items-center justify-start px-2 py-3 hover:bg-gray-800/50 rounded-lg"
+            >
+              <Avatar className="w-9 h-9 mr-3 border border-gray-700">
+                <AvatarImage
+                  src="/placeholder.svg?height=36&width=36"
+                  alt="Employee"
+                />
+                <AvatarFallback className="bg-gradient-to-r from-blue-500 to-purple-600 text-white">
+                  {user?.email.charAt(0).toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+              <div className="flex flex-col items-start overflow-hidden">
+                <span className="text-sm font-medium text-gray-200">
+                  {user?.email}
+                </span>
+                <span className="text-xs text-gray-500 truncate w-full">
+                  {user?.role}
+                </span>
+              </div>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            className="w-56 bg-gray-900 border-gray-700 text-gray-200"
+            align="end"
+            forceMount
+          >
+            <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer focus:bg-gray-800">
+              <Link href="/employee/profile" className="flex items-center w-full">
+                <Avatar className="w-4 h-4 mr-2">
+                  <AvatarFallback className="bg-gradient-to-r from-blue-500 to-purple-600 text-white text-[10px]">
+                    {user?.email.charAt(0).toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+                <span>Profile</span>
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer focus:bg-gray-800">
+              <Link href="/employee/settings" className="flex items-center w-full">
+                <Settings className="mr-2 h-4 w-4 text-gray-400" />
+                <span>Settings</span>
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="hover:bg-gray-800 cursor-pointer focus:bg-gray-800"
+              onSelect={handleLogout}
+            >
+              <LogOut className="mr-2 h-4 w-4 text-gray-400" />
+              <span>Log out</span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </div>
   )
 }
 
@@ -7582,6 +7959,177 @@ function useToast() {
 export { useToast, toast }
 
 ================
+File: lib/api.ts
+================
+// lib/api.ts
+
+// Data model interfaces
+
+export interface User {
+  _id: string;
+  email: string;
+  role: string;
+}
+
+export interface Agent {
+  _id: string;
+  name: string;
+  role: string;
+  description?: string;
+  emails?: string[];
+  steps?: Array<{ title: string; description: string }>;
+}
+
+export interface UserCreate {
+  email: string;
+  role: string;
+  password?: string; // if omitted, backend defaults to "12345678"
+}
+
+export interface UserUpdate {
+  email?: string;
+  role?: string;
+  password?: string;
+}
+
+export interface AgentCreate {
+  name: string;
+  role: string;
+  description?: string;
+  emails: string[];
+  steps: Array<{ title: string; description: string }>;
+}
+
+export interface AgentUpdate {
+  name?: string;
+  role?: string;
+  description?: string;
+  emails?: string[];
+  steps?: Array<{ title: string; description: string }>;
+}
+
+// Set your API base URL.
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+// A generic helper to make HTTP requests to the backend.
+async function request<T = any>(
+  endpoint: string,
+  options?: RequestInit
+): Promise<T> {
+  const response = await fetch(`${API_BASE}${endpoint}`, options);
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(errorText || "Request failed");
+  }
+  return response.json();
+}
+
+/* ============================
+   Authentication Endpoints
+=============================*/
+
+// POST /auth/login
+export async function loginUser(email: string, password: string): Promise<User> {
+  return request<User>("/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+}
+
+/* ============================
+   User Endpoints
+=============================*/
+
+// GET /users
+export async function getUsers(): Promise<User[]> {
+  return request<User[]>("/users");
+}
+
+// POST /users
+export async function createUser(user: UserCreate): Promise<User> {
+  return request<User>("/users", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(user),
+  });
+}
+
+// GET /users/{id}
+export async function getUser(id: string): Promise<User> {
+  return request<User>(`/users/${id}`);
+}
+
+// PUT /users/{id}
+export async function updateUser(
+  id: string,
+  user: UserUpdate
+): Promise<User> {
+  return request<User>(`/users/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(user),
+  });
+}
+
+// DELETE /users/{id}
+export async function deleteUser(id: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/users/${id}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(errorText || "Failed to delete user");
+  }
+}
+
+/* ============================
+   Agent Endpoints
+=============================*/
+
+// GET /agents
+export async function getAgents(): Promise<Agent[]> {
+  return request<Agent[]>("/agents");
+}
+
+// POST /agents
+export async function createAgent(agent: AgentCreate): Promise<Agent> {
+  return request<Agent>("/agents", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(agent),
+  });
+}
+
+// GET /agents/{id}
+export async function getAgent(id: string): Promise<Agent> {
+  return request<Agent>(`/agents/${id}`);
+}
+
+// PUT /agents/{id}
+export async function updateAgent(
+  id: string,
+  agent: AgentUpdate
+): Promise<Agent> {
+  return request<Agent>(`/agents/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(agent),
+  });
+}
+
+// DELETE /agents/{id}
+export async function deleteAgent(id: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/agents/${id}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(errorText || "Failed to delete agent");
+  }
+}
+
+================
 File: lib/utils.ts
 ================
 import { clsx, type ClassValue } from "clsx"
@@ -7595,11 +8143,6 @@ export function cn(...inputs: ClassValue[]) {
 File: public/placeholder-logo.svg
 ================
 <svg xmlns="http://www.w3.org/2000/svg" width="215" height="48" fill="none"><path fill="#000" d="M57.588 9.6h6L73.828 38h-5.2l-2.36-6.88h-11.36L52.548 38h-5.2l10.24-28.4Zm7.16 17.16-4.16-12.16-4.16 12.16h8.32Zm23.694-2.24c-.186-1.307-.706-2.32-1.56-3.04-.853-.72-1.866-1.08-3.04-1.08-1.68 0-2.986.613-3.92 1.84-.906 1.227-1.36 2.947-1.36 5.16s.454 3.933 1.36 5.16c.934 1.227 2.24 1.84 3.92 1.84 1.254 0 2.307-.373 3.16-1.12.854-.773 1.387-1.867 1.6-3.28l5.12.24c-.186 1.68-.733 3.147-1.64 4.4-.906 1.227-2.08 2.173-3.52 2.84-1.413.667-2.986 1-4.72 1-2.08 0-3.906-.453-5.48-1.36-1.546-.907-2.76-2.2-3.64-3.88-.853-1.68-1.28-3.627-1.28-5.84 0-2.24.427-4.187 1.28-5.84.88-1.68 2.094-2.973 3.64-3.88 1.574-.907 3.4-1.36 5.48-1.36 1.68 0 3.227.32 4.64.96 1.414.64 2.56 1.56 3.44 2.76.907 1.2 1.454 2.6 1.64 4.2l-5.12.28Zm11.486-7.72.12 3.4c.534-1.227 1.307-2.173 2.32-2.84 1.04-.693 2.267-1.04 3.68-1.04 1.494 0 2.76.387 3.8 1.16 1.067.747 1.827 1.813 2.28 3.2.507-1.44 1.294-2.52 2.36-3.24 1.094-.747 2.414-1.12 3.96-1.12 1.414 0 2.64.307 3.68.92s1.84 1.52 2.4 2.72c.56 1.2.84 2.667.84 4.4V38h-4.96V25.92c0-1.813-.293-3.187-.88-4.12-.56-.96-1.413-1.44-2.56-1.44-.906 0-1.68.213-2.32.64-.64.427-1.133 1.053-1.48 1.88-.32.827-.48 1.84-.48 3.04V38h-4.56V25.92c0-1.2-.133-2.213-.4-3.04-.24-.827-.626-1.453-1.16-1.88-.506-.427-1.133-.64-1.88-.64-.906 0-1.68.227-2.32.68-.64.427-1.133 1.053-1.48 1.88-.32.827-.48 1.827-.48 3V38h-4.96V16.8h4.48Zm26.723 10.6c0-2.24.427-4.187 1.28-5.84.854-1.68 2.067-2.973 3.64-3.88 1.574-.907 3.4-1.36 5.48-1.36 1.84 0 3.494.413 4.96 1.24 1.467.827 2.64 2.08 3.52 3.76.88 1.653 1.347 3.693 1.4 6.12v1.32h-15.08c.107 1.813.614 3.227 1.52 4.24.907.987 2.134 1.48 3.68 1.48.987 0 1.88-.253 2.68-.76a4.803 4.803 0 0 0 1.84-2.2l5.08.36c-.64 2.027-1.84 3.64-3.6 4.84-1.733 1.173-3.733 1.76-6 1.76-2.08 0-3.906-.453-5.48-1.36-1.573-.907-2.786-2.2-3.64-3.88-.853-1.68-1.28-3.627-1.28-5.84Zm15.16-2.04c-.213-1.733-.76-3.013-1.64-3.84-.853-.827-1.893-1.24-3.12-1.24-1.44 0-2.6.453-3.48 1.36-.88.88-1.44 2.12-1.68 3.72h9.92ZM163.139 9.6V38h-5.04V9.6h5.04Zm8.322 7.2.24 5.88-.64-.36c.32-2.053 1.094-3.56 2.32-4.52 1.254-.987 2.787-1.48 4.6-1.48 2.32 0 4.107.733 5.36 2.2 1.254 1.44 1.88 3.387 1.88 5.84V38h-4.96V25.92c0-1.253-.12-2.28-.36-3.08-.24-.8-.64-1.413-1.2-1.84-.533-.427-1.253-.64-2.16-.64-1.44 0-2.573.48-3.4 1.44-.8.933-1.2 2.307-1.2 4.12V38h-4.96V16.8h4.48Zm30.003 7.72c-.186-1.307-.706-2.32-1.56-3.04-.853-.72-1.866-1.08-3.04-1.08-1.68 0-2.986.613-3.92 1.84-.906 1.227-1.36 2.947-1.36 5.16s.454 3.933 1.36 5.16c.934 1.227 2.24 1.84 3.92 1.84 1.254 0 2.307-.373 3.16-1.12.854-.773 1.387-1.867 1.6-3.28l5.12.24c-.186 1.68-.733 3.147-1.64 4.4-.906 1.227-2.08 2.173-3.52 2.84-1.413.667-2.986 1-4.72 1-2.08 0-3.906-.453-5.48-1.36-1.546-.907-2.76-2.2-3.64-3.88-.853-1.68-1.28-3.627-1.28-5.84 0-2.24.427-4.187 1.28-5.84.88-1.68 2.094-2.973 3.64-3.88 1.574-.907 3.4-1.36 5.48-1.36 1.68 0 3.227.32 4.64.96 1.414.64 2.56 1.56 3.44 2.76.907 1.2 1.454 2.6 1.64 4.2l-5.12.28Zm11.443 8.16V38h-5.6v-5.32h5.6Z"/><path fill="#171717" fill-rule="evenodd" d="m7.839 40.783 16.03-28.054L20 6 0 40.783h7.839Zm8.214 0H40L27.99 19.894l-4.02 7.032 3.976 6.914H20.02l-3.967 6.943Z" clip-rule="evenodd"/></svg>
-
-================
-File: public/placeholder.svg
-================
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1200" fill="none"><rect width="1200" height="1200" fill="#EAEAEA" rx="3"/><g opacity=".5"><g opacity=".5"><path fill="#FAFAFA" d="M600.709 736.5c-75.454 0-136.621-61.167-136.621-136.62 0-75.454 61.167-136.621 136.621-136.621 75.453 0 136.62 61.167 136.62 136.621 0 75.453-61.167 136.62-136.62 136.62Z"/><path stroke="#C9C9C9" stroke-width="2.418" d="M600.709 736.5c-75.454 0-136.621-61.167-136.621-136.62 0-75.454 61.167-136.621 136.621-136.621 75.453 0 136.62 61.167 136.62 136.621 0 75.453-61.167 136.62-136.62 136.62Z"/></g><path stroke="url(#a)" stroke-width="2.418" d="M0-1.209h553.581" transform="scale(1 -1) rotate(45 1163.11 91.165)"/><path stroke="url(#b)" stroke-width="2.418" d="M404.846 598.671h391.726"/><path stroke="url(#c)" stroke-width="2.418" d="M599.5 795.742V404.017"/><path stroke="url(#d)" stroke-width="2.418" d="m795.717 796.597-391.441-391.44"/><path fill="#fff" d="M600.709 656.704c-31.384 0-56.825-25.441-56.825-56.824 0-31.384 25.441-56.825 56.825-56.825 31.383 0 56.824 25.441 56.824 56.825 0 31.383-25.441 56.824-56.824 56.824Z"/><g clip-path="url(#e)"><path fill="#666" fill-rule="evenodd" d="M616.426 586.58h-31.434v16.176l3.553-3.554.531-.531h9.068l.074-.074 8.463-8.463h2.565l7.18 7.181V586.58Zm-15.715 14.654 3.698 3.699 1.283 1.282-2.565 2.565-1.282-1.283-5.2-5.199h-6.066l-5.514 5.514-.073.073v2.876a2.418 2.418 0 0 0 2.418 2.418h26.598a2.418 2.418 0 0 0 2.418-2.418v-8.317l-8.463-8.463-7.181 7.181-.071.072Zm-19.347 5.442v4.085a6.045 6.045 0 0 0 6.046 6.045h26.598a6.044 6.044 0 0 0 6.045-6.045v-7.108l1.356-1.355-1.282-1.283-.074-.073v-17.989h-38.689v23.43l-.146.146.146.147Z" clip-rule="evenodd"/></g><path stroke="#C9C9C9" stroke-width="2.418" d="M600.709 656.704c-31.384 0-56.825-25.441-56.825-56.824 0-31.384 25.441-56.825 56.825-56.825 31.383 0 56.824 25.441 56.824 56.825 0 31.383-25.441 56.824-56.824 56.824Z"/></g><defs><linearGradient id="a" x1="554.061" x2="-.48" y1=".083" y2=".087" gradientUnits="userSpaceOnUse"><stop stop-color="#C9C9C9" stop-opacity="0"/><stop offset=".208" stop-color="#C9C9C9"/><stop offset=".792" stop-color="#C9C9C9"/><stop offset="1" stop-color="#C9C9C9" stop-opacity="0"/></linearGradient><linearGradient id="b" x1="796.912" x2="404.507" y1="599.963" y2="599.965" gradientUnits="userSpaceOnUse"><stop stop-color="#C9C9C9" stop-opacity="0"/><stop offset=".208" stop-color="#C9C9C9"/><stop offset=".792" stop-color="#C9C9C9"/><stop offset="1" stop-color="#C9C9C9" stop-opacity="0"/></linearGradient><linearGradient id="c" x1="600.792" x2="600.794" y1="403.677" y2="796.082" gradientUnits="userSpaceOnUse"><stop stop-color="#C9C9C9" stop-opacity="0"/><stop offset=".208" stop-color="#C9C9C9"/><stop offset=".792" stop-color="#C9C9C9"/><stop offset="1" stop-color="#C9C9C9" stop-opacity="0"/></linearGradient><linearGradient id="d" x1="404.85" x2="796.972" y1="403.903" y2="796.02" gradientUnits="userSpaceOnUse"><stop stop-color="#C9C9C9" stop-opacity="0"/><stop offset=".208" stop-color="#C9C9C9"/><stop offset=".792" stop-color="#C9C9C9"/><stop offset="1" stop-color="#C9C9C9" stop-opacity="0"/></linearGradient><clipPath id="e"><path fill="#fff" d="M581.364 580.535h38.689v38.689h-38.689z"/></clipPath></defs></svg>
 
 ================
 File: src/app/globals.css
@@ -8172,6 +8715,7 @@ File: package.json
     "@radix-ui/react-toggle": "^1.1.1",
     "@radix-ui/react-toggle-group": "^1.1.1",
     "@radix-ui/react-tooltip": "^1.1.6",
+    "@tanstack/react-query": "^5.67.1",
     "autoprefixer": "^10.4.20",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

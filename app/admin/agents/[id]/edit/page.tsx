@@ -2,35 +2,50 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Plus, X, GripVertical } from "lucide-react"
-
-// This would come from your database
-const MOCK_AGENTS = {
-  "1": {
-    name: "Engineering Onboarding",
-    role: "Software Engineer",
-    description: "Complete onboarding process for new engineering hires",
-    emails: ["alice@company.com", "bob@company.com"],
-    steps: [
-      { title: "Setup Development Environment", description: "Install necessary tools and configure workspace" },
-      { title: "Code Review Process", description: "Learn about the team's code review practices" },
-      { title: "Architecture Overview", description: "Understanding the system architecture" },
-    ],
-  },
-}
+import { getAgent, updateAgent, type Agent, type AgentUpdate } from "@/lib/api"
+import { toast } from "@/components/ui/use-toast"
 
 export default function EditAgent({ params }: { params: { id: string } }) {
-  const agent = MOCK_AGENTS[params.id as keyof typeof MOCK_AGENTS]
-  const [emails, setEmails] = useState<string[]>(agent?.emails || [])
+  const [agent, setAgent] = useState<Agent | null>(null)
+  const [name, setName] = useState("")
+  const [role, setRole] = useState("")
+  const [description, setDescription] = useState("")
+  const [emails, setEmails] = useState<string[]>([])
   const [newEmail, setNewEmail] = useState("")
-  const [steps, setSteps] = useState(agent?.steps || [])
+  const [steps, setSteps] = useState<Array<{ title: string; description: string }>>([])
   const [newStep, setNewStep] = useState({ title: "", description: "" })
+  const router = useRouter()
+
+  useEffect(() => {
+    fetchAgent()
+  }, [])
+
+  const fetchAgent = async () => {
+    try {
+      const fetchedAgent = await getAgent(params.id)
+      setAgent(fetchedAgent)
+      setName(fetchedAgent.name)
+      setRole(fetchedAgent.role)
+      setDescription(fetchedAgent.description || "")
+      setEmails(fetchedAgent.emails || [])
+      setSteps(fetchedAgent.steps || [])
+    } catch (error) {
+      console.error("Failed to fetch agent:", error)
+      toast({
+        title: "Error",
+        description: "Failed to load agent details. Please try again.",
+        variant: "destructive",
+      })
+    }
+  }
 
   const addEmail = (e: React.FormEvent) => {
     e.preventDefault()
@@ -55,7 +70,35 @@ export default function EditAgent({ params }: { params: { id: string } }) {
     setSteps(steps.filter((_, i) => i !== index))
   }
 
-  if (!agent) return <div>Agent not found</div>
+  const handleUpdate = async () => {
+    if (!agent) return
+
+    const updatedAgent: AgentUpdate = {
+      name,
+      role,
+      description,
+      emails,
+      steps,
+    }
+
+    try {
+      await updateAgent(agent._id, updatedAgent)
+      toast({
+        title: "Success",
+        description: "Agent updated successfully.",
+      })
+      router.push(`/admin/agents/${agent._id}`)
+    } catch (error) {
+      console.error("Failed to update agent:", error)
+      toast({
+        title: "Error",
+        description: "Failed to update agent. Please try again.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  if (!agent) return <div>Loading...</div>
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
@@ -70,14 +113,24 @@ export default function EditAgent({ params }: { params: { id: string } }) {
             <Label htmlFor="name" className="text-gray-300">
               Agent Name
             </Label>
-            <Input id="name" defaultValue={agent.name} className="bg-gray-900 border-gray-700 text-gray-200" />
+            <Input
+              id="name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="bg-gray-900 border-gray-700 text-gray-200"
+            />
           </div>
 
           <div className="grid gap-2">
             <Label htmlFor="role" className="text-gray-300">
               Role
             </Label>
-            <Input id="role" defaultValue={agent.role} className="bg-gray-900 border-gray-700 text-gray-200" />
+            <Input
+              id="role"
+              value={role}
+              onChange={(e) => setRole(e.target.value)}
+              className="bg-gray-900 border-gray-700 text-gray-200"
+            />
           </div>
 
           <div className="grid gap-2">
@@ -86,7 +139,8 @@ export default function EditAgent({ params }: { params: { id: string } }) {
             </Label>
             <Textarea
               id="description"
-              defaultValue={agent.description}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
               className="bg-gray-900 border-gray-700 text-gray-200"
             />
           </div>
@@ -184,8 +238,10 @@ export default function EditAgent({ params }: { params: { id: string } }) {
           </div>
 
           <div className="flex justify-end gap-3 mt-6">
-            <Button variant="outline">Cancel</Button>
-            <Button>Save Changes</Button>
+            <Button variant="outline" onClick={() => router.push(`/admin/agents/${agent._id}`)}>
+              Cancel
+            </Button>
+            <Button onClick={handleUpdate}>Save Changes</Button>
           </div>
         </CardContent>
       </Card>
