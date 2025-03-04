@@ -3,10 +3,11 @@
 import type React from "react"
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { useUser } from "../context/UserContext"
+import { useUser } from "@/app/context/UserContext"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { GradientBackground } from "@/components/gradient-background"
 
 export default function Login() {
   const [email, setEmail] = useState("")
@@ -24,13 +25,14 @@ export default function Login() {
 
   return (
     <div className="min-h-screen flex items-center justify-center">
-      <div className="w-full max-w-md p-6">
-        <div className="mb-8 text-center">
-          <h1 className="text-3xl font-bold text-white mb-2">Welcome back</h1>
-          <p className="text-gray-400">Sign in to your account to continue</p>
-        </div>
+      <GradientBackground />
+      <div className="w-full max-w-md p-6 relative z-10">
 
         <div className="bg-black/40 backdrop-blur-xl rounded-xl p-6 border border-white/10">
+          <div className="mb-8 text-center">
+            <h1 className="text-3xl font-bold text-white mb-2">Welcome back</h1>
+            <p className="text-gray-400">Sign in to your account to continue</p>
+          </div>
           <form onSubmit={handleLogin} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email" className="text-gray-300">

@@ -2,9 +2,11 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Home, Plus } from "lucide-react"
+import { Home, Plus, Users, LogOut, Settings } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 
 type Agent = {
   id: string
@@ -22,7 +24,7 @@ export function Sidebar() {
   ]
 
   return (
-    <div className="w-80 border-r border-gray-800 backdrop-blur-sm bg-black/60 text-gray-300 p-4 flex flex-col">
+    <div className="w-80 border-r border-gray-800 backdrop-blur-sm bg-black/60 text-gray-300 p-4 flex flex-col h-screen">
       <Link href="/admin" className="flex items-center gap-2 px-2 py-1.5 mb-6 text-gray-300 hover:text-white">
         <Home size={20} />
         <span>Home</span>
@@ -38,7 +40,7 @@ export function Sidebar() {
         </Link>
       </div>
 
-      <div className="space-y-1">
+      <div className="space-y-1 flex-grow overflow-auto">
         {agents.map((agent) => (
           <Link
             key={agent.id}
@@ -58,6 +60,41 @@ export function Sidebar() {
           </Link>
         ))}
       </div>
+
+      <div className="mt-auto pt-4 border-t border-gray-800">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild className="py-7">
+            <Button
+              variant="ghost"
+              className="w-full flex items-center justify-start hover:bg-gray-800/50 rounded-lg"
+            >
+              <Avatar className="w-9 h-9 mr-3 border border-gray-700">
+                <AvatarImage src="/placeholder.svg?height=36&width=36" alt="Admin" />
+                <AvatarFallback className="bg-gradient-to-r from-blue-500 to-purple-600 text-white"></AvatarFallback>
+              </Avatar>
+              <div className="flex flex-col items-start overflow-hidden">
+                <span className="text-sm font-medium text-gray-200">Admin User</span>
+                <span className="text-xs text-gray-500 truncate w-full">admin@example.com</span>
+              </div>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent className="w-56 bg-gray-900 border-gray-700 text-gray-200" align="end" forceMount>
+            <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer focus:bg-gray-800">
+              <Link href="/admin/users" className="flex items-center w-full">
+                <Settings className="mr-2 h-4 w-4 text-gray-400" />
+                <span>Manage Users</span>
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer focus:bg-gray-800">
+              <Link href="/login" className="flex items-center w-full">
+                <LogOut className="mr-2 h-4 w-4 text-gray-400" />
+                <span>Log out</span>
+              </Link>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
     </div>
   )
 }
+

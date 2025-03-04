@@ -27,12 +27,12 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center">
       <GradientBackground />
       <div className="w-full max-w-md p-6 relative z-10">
-        <div className="mb-8 text-center">
-          <h1 className="text-3xl font-bold text-white mb-2">Welcome back</h1>
-          <p className="text-gray-400">Sign in to your account to continue</p>
-        </div>
 
         <div className="bg-black/40 backdrop-blur-xl rounded-xl p-6 border border-white/10">
+          <div className="mb-8 text-center">
+            <h1 className="text-3xl font-bold text-white mb-2">Welcome back</h1>
+            <p className="text-gray-400">Sign in to your account to continue</p>
+          </div>
           <form onSubmit={handleLogin} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email" className="text-gray-300">

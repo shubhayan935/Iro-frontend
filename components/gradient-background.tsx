@@ -145,16 +145,6 @@ export function GradientBackground() {
         transition: "background 0.8s cubic-bezier(0.22, 1, 0.36, 1)", // Slower transition
       }}
     >
-      {/* Nebula dust particles with reduced movement */}
-      <div className="absolute inset-0 opacity-20" // Reduced opacity from 0.25 to 0.20
-        style={{ 
-          backgroundImage: `radial-gradient(white 1px, transparent 1px)`,
-          backgroundSize: "50px 50px",
-          backgroundPosition: `${mousePosition.x * 5}px ${mousePosition.y * 5}px`, // Reduced from 10 to 5
-          transition: "background-position 0.8s ease" // Slower transition
-        }} 
-      />
-      
       {/* Individual moving stars with reduced pulsing */}
       {stars.map((star, index) => {
         // Individual star pulsing effect with reduced intensity
