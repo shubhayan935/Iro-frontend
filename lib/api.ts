@@ -8,13 +8,9 @@ export interface User {
   role: string;
 }
 
-export interface Agent {
+export interface Agent extends AgentCreate {
+  id: string;
   _id: string;
-  name: string;
-  role: string;
-  description?: string;
-  emails?: string[];
-  steps?: Array<{ title: string; description: string }>;
 }
 
 export interface UserCreate {
@@ -34,7 +30,11 @@ export interface AgentCreate {
   role: string;
   description?: string;
   emails: string[];
-  steps: Array<{ title: string; description: string }>;
+  steps?: Array<{
+    title: string;
+    description: string;
+    recordingUrl?: string;
+  }>;
 }
 
 export interface AgentUpdate {
@@ -126,42 +126,94 @@ export async function deleteUser(id: string): Promise<void> {
 
 // GET /agents
 export async function getAgents(): Promise<Agent[]> {
-  return request<Agent[]>("/agents");
+  const response = await fetch(`${API_BASE}/agents/`);
+  
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to fetch agents');
+  }
+  
+  return response.json();
 }
 
 // POST /agents
 export async function createAgent(agent: AgentCreate): Promise<Agent> {
-  return request<Agent>("/agents", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
+  const response = await fetch(`${API_BASE}/agents/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
     body: JSON.stringify(agent),
   });
+  
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to create agent');
+  }
+  
+  return response.json();
+}
+
+// Upload recording
+export async function uploadRecording(
+  file: Blob,
+  stepIndex: number
+): Promise<{ url: string; file_id: string }> {
+  const formData = new FormData();
+  formData.append('file', file, `step-${stepIndex + 1}.webm`);
+  formData.append('step_index', stepIndex.toString());
+  
+  const response = await fetch(`${API_BASE}/recordings/upload`, {
+    method: 'POST',
+    body: formData,
+  });
+  
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
+    throw new Error(error.detail || 'Failed to upload recording');
+  }
+  
+  return response.json();
 }
 
 // GET /agents/{id}
-export async function getAgent(id: string): Promise<Agent> {
-  return request<Agent>(`/agents/${id}`);
+export async function getAgent(agentId: string): Promise<Agent> {
+  const response = await fetch(`${API_BASE}/agents/${agentId}`);
+  
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to fetch agent');
+  }
+  
+  return response.json();
 }
 
 // PUT /agents/{id}
-export async function updateAgent(
-  id: string,
-  agent: AgentUpdate
-): Promise<Agent> {
-  return request<Agent>(`/agents/${id}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(agent),
+export async function updateAgent(agentId: string, agentUpdate: Partial<AgentCreate>): Promise<Agent> {
+  const response = await fetch(`${API_BASE}/agents/${agentId}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(agentUpdate),
   });
+  
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to update agent');
+  }
+  
+  return response.json();
 }
 
 // DELETE /agents/{id}
-export async function deleteAgent(id: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/agents/${id}`, {
-    method: "DELETE",
+export async function deleteAgent(agentId: string): Promise<void> {
+  const response = await fetch(`${API_BASE}/agents/${agentId}`, {
+    method: 'DELETE',
   });
-  if (!res.ok) {
-    const errorText = await res.text();
-    throw new Error(errorText || "Failed to delete agent");
+  
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
+    throw new Error(error.detail || 'Failed to delete agent');
   }
 }

@@ -52,7 +52,6 @@ interface UserManagementProps {
 export function UserManagement({ users, onUserChange }: UserManagementProps) {
   const { user: currentUser } = useUser()
   const [filteredUsers, setFilteredUsers] = useState<User[]>(users)
-  // Removed organization_id from newUser initial state.
   const [newUser, setNewUser] = useState<UserCreate>({
     email: "",
     role: "Employee",
