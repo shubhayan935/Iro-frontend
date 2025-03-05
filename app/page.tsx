@@ -406,6 +406,77 @@ export default function LandingPage() {
           </div>
         </div>
       </section>
+
+      {/* Built for Business Section */}
+      <section className="py-20 px-4 bg-[#0e0e0e]">
+        <div className="max-w-6xl mx-auto">
+          <h2 className="text-3xl md:text-4xl font-bold text-white mb-16 text-center">Built for business</h2>
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
+            {/* Private */}
+            <div className="bg-[#1a1a1a] rounded-lg p-6 flex flex-col items-center text-center hover:bg-[#1e1e1e] transition-colors">
+              <div className="h-32 flex items-center justify-center mb-8">
+                <svg className="w-16 h-16 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <path d="M3 9h18v10a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                  <path d="M8 9V5a2 2 0 012-2h4a2 2 0 012 2v4" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-semibold text-white mb-2">Private</h3>
+              <p className="text-gray-400">Your data stays on your servers</p>
+            </div>
+            
+            {/* Secure */}
+            <div className="bg-[#1a1a1a] rounded-lg p-6 flex flex-col items-center text-center hover:bg-[#1e1e1e] transition-colors">
+              <div className="h-32 flex items-center justify-center mb-8">
+                <svg className="w-16 h-16 text-[#FF6B6B]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                  <path d="M7 11V7a5 5 0 0110 0v4" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-semibold text-white mb-2">Secure</h3>
+              <p className="text-gray-400">End-to-end encryption</p>
+            </div>
+            
+            {/* 24/7 Support */}
+            <div className="bg-[#1a1a1a] rounded-lg p-6 flex flex-col items-center text-center hover:bg-[#1e1e1e] transition-colors">
+              <div className="h-32 flex items-center justify-center mb-8">
+                <svg className="w-16 h-16 text-[#4CD964]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-semibold text-white mb-2">24/7 support</h3>
+              <p className="text-gray-400">Dedicated support team of AI experts</p>
+            </div>
+            
+            {/* Enterprise-grade */}
+            <div className="bg-[#1a1a1a] rounded-lg p-6 flex flex-col items-center text-center hover:bg-[#1e1e1e] transition-colors">
+              <div className="h-32 flex items-center justify-center mb-8">
+                <svg className="w-16 h-16 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <path d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16" />
+                  <path d="M3 7h18" />
+                  <path d="M7 11h2" />
+                  <path d="M7 15h2" />
+                  <path d="M15 11h2" />
+                  <path d="M15 15h2" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-semibold text-white mb-2">Enterprise-grade</h3>
+              <p className="text-gray-400">Built for large organizations</p>
+            </div>
+            
+            {/* Customizable */}
+            <div className="bg-[#1a1a1a] rounded-lg p-6 flex flex-col items-center text-center hover:bg-[#1e1e1e] transition-colors">
+              <div className="h-32 flex items-center justify-center mb-8">
+                <svg className="w-16 h-16 text-[#A78BFA]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <path d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-semibold text-white mb-2">Customizable</h3>
+              <p className="text-gray-400">Tailored to your needs</p>
+            </div>
+          </div>
+        </div>
+      </section>
       
       {/* Pricing Section */}
       <section id="pricing" ref={pricingRef} className="py-20 px-4 relative">
