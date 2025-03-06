@@ -93,12 +93,12 @@ export default function CreateAgent() {
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
-      <h1 className="text-2xl font-semibold mb-6 text-gray-200">
+      <h1 className="text-2xl font-semibold mb-6 text-foreground">
         Create New Agent
       </h1>
-      <Card className="bg-[#1C1C1C] border-gray-800">
+      <Card className="bg-card border border-border">
         <CardHeader>
-          <CardTitle className="text-gray-200">Agent Details</CardTitle>
+          <CardTitle className="text-foreground">Agent Details</CardTitle>
           <CardDescription>
             Configure your new onboarding agent
           </CardDescription>
@@ -107,7 +107,7 @@ export default function CreateAgent() {
           <div className="space-y-6">
             {/* Agent Name */}
             <div className="grid gap-2">
-              <Label htmlFor="agentName" className="text-gray-300">
+              <Label htmlFor="agentName" className="text-muted-foreground">
                 Agent Name
               </Label>
               <Input
@@ -115,12 +115,12 @@ export default function CreateAgent() {
                 placeholder="Enter agent name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="bg-gray-900 border-gray-700 text-gray-200"
+                className="bg-input border-input text-foreground"
               />
             </div>
             {/* Agent Role */}
             <div className="grid gap-2">
-              <Label htmlFor="agentRole" className="text-gray-300">
+              <Label htmlFor="agentRole" className="text-muted-foreground">
                 Role
               </Label>
               <Input
@@ -128,12 +128,12 @@ export default function CreateAgent() {
                 placeholder="Enter agent role"
                 value={role}
                 onChange={(e) => setRole(e.target.value)}
-                className="bg-gray-900 border-gray-700 text-gray-200"
+                className="bg-input border-input text-foreground"
               />
             </div>
             {/* Agent Description */}
             <div className="grid gap-2">
-              <Label htmlFor="agentDescription" className="text-gray-300">
+              <Label htmlFor="agentDescription" className="text-muted-foreground">
                 Description
               </Label>
               <Textarea
@@ -141,12 +141,12 @@ export default function CreateAgent() {
                 placeholder="Enter agent description"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                className="bg-gray-900 border-gray-700 text-gray-200"
+                className="bg-input border-input text-foreground"
               />
             </div>
             {/* Authorized Employee Emails */}
             <div className="grid gap-2">
-              <Label className="text-gray-300">
+              <Label className="text-muted-foreground">
                 Authorized Employee Emails
               </Label>
               <form onSubmit={addEmail} className="flex gap-2">
@@ -155,7 +155,7 @@ export default function CreateAgent() {
                   placeholder="Enter employee email"
                   value={newEmail}
                   onChange={(e) => setNewEmail(e.target.value)}
-                  className="bg-gray-900 border-gray-700 text-gray-200"
+                  className="bg-input border-input text-foreground"
                 />
                 <Button type="submit">
                   <Plus className="mr-2 h-4 w-4" />
@@ -167,12 +167,12 @@ export default function CreateAgent() {
                   {emails.map((email, index) => (
                     <li
                       key={index}
-                      className="flex items-center justify-between bg-gray-800 p-2 rounded"
+                      className="flex items-center justify-between bg-card p-2 rounded"
                     >
-                      <span className="text-gray-200">{email}</span>
+                      <span className="text-foreground">{email}</span>
                       <button
                         onClick={() => removeEmail(email)}
-                        className="text-gray-400 hover:text-gray-200"
+                        className="text-muted-foreground hover:text-foreground"
                       >
                         <X className="h-4 w-4" />
                       </button>
@@ -183,20 +183,20 @@ export default function CreateAgent() {
             </div>
             {/* Onboarding Steps */}
             <div className="grid gap-2">
-              <Label className="text-gray-300">Onboarding Steps</Label>
+              <Label className="text-muted-foreground">Onboarding Steps</Label>
               {recordedSteps.length > 0 ? (
                 <ul className="space-y-2">
                   {recordedSteps.map((step, index) => (
-                    <li key={index} className="bg-gray-800 p-2 rounded">
-                      <h3 className="font-semibold text-gray-200">
+                    <li key={index} className="bg-card p-2 rounded">
+                      <h3 className="font-semibold text-foreground">
                         {step.title}
                       </h3>
-                      <p className="text-gray-400">{step.description}</p>
+                      <p className="text-muted-foreground">{step.description}</p>
                     </li>
                   ))}
                 </ul>
               ) : (
-                <p className="text-gray-400">
+                <p className="text-muted-foreground">
                   No onboarding steps recorded yet.
                 </p>
               )}

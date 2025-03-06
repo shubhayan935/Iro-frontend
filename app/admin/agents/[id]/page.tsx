@@ -44,10 +44,10 @@ export default function AgentPage({ params }: { params: { id: string } }) {
   if (!agent) return <div>Agent not found</div>
 
   return (
-    <div className="p-6 text-gray-200">
+    <div className="p-6 text-card-foreground">
       <div className="mb-8">
         <h1 className="text-2xl font-semibold mb-1">{agent.name}</h1>
-        <div className="flex items-center gap-6 text-sm text-gray-400">
+        <div className="flex items-center gap-6 text-sm text-muted-foreground">
           <div className="flex items-center gap-2">
             <span className="w-6 h-6 rounded-full bg-gray-700" />
             <span>Role: {agent.role}</span>
@@ -68,14 +68,14 @@ export default function AgentPage({ params }: { params: { id: string } }) {
       </div>
 
       <div className="mb-6">
-        <div className="flex border-b border-gray-800">
+        <div className="flex border-b border-border">
           {["Activity", "Workflow", "Settings"].map((tab) => (
             <button
               key={tab}
               className={`px-4 py-2 font-medium ${
                 activeTab.toLowerCase() === tab.toLowerCase()
-                  ? "text-blue-500 border-b-2 border-blue-500"
-                  : "text-gray-400 hover:text-gray-200"
+                  ? "text-primary border-b-2 border-primary"
+                  : "text-muted-foreground hover:text-card-foreground"
               }`}
               onClick={() => setActiveTab(tab.toLowerCase())}
             >
@@ -86,10 +86,10 @@ export default function AgentPage({ params }: { params: { id: string } }) {
       </div>
 
       {activeTab === "activity" && (
-        <Card className="bg-[#1C1C1C] border-gray-800">
+        <Card className="bg-card border-border">
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
-              <CardTitle className="text-gray-200">Recent Activity</CardTitle>
+              <CardTitle className="text-card-foreground">Recent Activity</CardTitle>
               <CardDescription>View recent onboarding sessions and employee progress</CardDescription>
             </div>
             <Button variant="ghost" size="icon">
@@ -99,12 +99,12 @@ export default function AgentPage({ params }: { params: { id: string } }) {
           <CardContent>
             <Table>
               <TableHeader>
-                <TableRow className="border-gray-800">
-                  <TableHead className="text-gray-400">Employee</TableHead>
-                  <TableHead className="text-gray-400">Email</TableHead>
-                  <TableHead className="text-gray-400">Progress</TableHead>
-                  <TableHead className="text-gray-400">Status</TableHead>
-                  <TableHead className="text-gray-400"></TableHead>
+                <TableRow className="border-border">
+                  <TableHead className="text-muted-foreground">Employee</TableHead>
+                  <TableHead className="text-muted-foreground">Email</TableHead>
+                  <TableHead className="text-muted-foreground">Progress</TableHead>
+                  <TableHead className="text-muted-foreground">Status</TableHead>
+                  <TableHead className="text-muted-foreground"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -112,12 +112,12 @@ export default function AgentPage({ params }: { params: { id: string } }) {
                   <>
                     <TableRow
                       key={i}
-                      className="border-gray-800 cursor-pointer hover:bg-gray-800/50"
+                      className="border-border cursor-pointer hover:bg-gray-800/50"
                       onClick={() => toggleRowExpansion(email)}
                     >
                       <TableCell className="text-gray-300">{email.split("@")[0]}</TableCell>
-                      <TableCell className="text-gray-400">{email}</TableCell>
-                      <TableCell className="text-gray-400">In Progress</TableCell>
+                      <TableCell className="text-muted-foreground">{email}</TableCell>
+                      <TableCell className="text-muted-foreground">In Progress</TableCell>
                       <TableCell className="text-gray-300">Active</TableCell>
                       <TableCell>
                         <Button variant="ghost" size="icon">
@@ -152,9 +152,9 @@ export default function AgentPage({ params }: { params: { id: string } }) {
       )}
 
       {activeTab === "workflow" && (
-        <Card className="bg-[#1C1C1C] border-gray-800">
+        <Card className="bg-card border-border">
           <CardHeader>
-            <CardTitle className="text-gray-200">Workflow</CardTitle>
+            <CardTitle className="text-card-foreground">Workflow</CardTitle>
             <CardDescription>Manage the onboarding workflow for this agent</CardDescription>
           </CardHeader>
           <CardContent>
@@ -170,13 +170,13 @@ export default function AgentPage({ params }: { params: { id: string } }) {
       )}
 
       {activeTab === "settings" && (
-        <Card className="bg-[#1C1C1C] border-gray-800">
+        <Card className="bg-card border-border">
           <CardHeader>
-            <CardTitle className="text-gray-200">Settings</CardTitle>
+            <CardTitle className="text-card-foreground">Settings</CardTitle>
             <CardDescription>Configure agent settings</CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="text-gray-400">{agent.description}</p>
+            <p className="text-muted-foreground">{agent.description}</p>
           </CardContent>
         </Card>
       )}

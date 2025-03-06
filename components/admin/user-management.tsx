@@ -40,7 +40,13 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 import { Label } from "@/components/ui/label"
-import { type User, type UserCreate, createUser, updateUser, deleteUser } from "@/lib/api"
+import {
+  type User,
+  type UserCreate,
+  createUser,
+  updateUser,
+  deleteUser,
+} from "@/lib/api"
 import { useUser } from "@/app/context/UserContext"
 import { toast } from "@/components/ui/use-toast"
 
@@ -137,24 +143,29 @@ export function UserManagement({ users, onUserChange }: UserManagementProps) {
   }
 
   return (
-    <Card className="bg-black/40 border-white/10 backdrop-blur-xl">
-      <CardHeader>
-      </CardHeader>
+    <Card className="bg-card/40 border-border/10 backdrop-blur-xl">
+      <CardHeader />
       <CardContent>
         <div className="space-y-6">
+          {/* New user form */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <Input
               placeholder="Email"
               value={newUser.email}
-              onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
-              className="bg-gray-900 border-gray-700 text-gray-200"
+              onChange={(e) =>
+                setNewUser({ ...newUser, email: e.target.value })
+              }
+              className="bg-card border-border text-card-foreground"
             />
             <select
               value={newUser.role}
               onChange={(e) =>
-                setNewUser({ ...newUser, role: e.target.value as "Employee" | "Admin" })
+                setNewUser({
+                  ...newUser,
+                  role: e.target.value as "Employee" | "Admin",
+                })
               }
-              className="bg-gray-900 border-gray-700 text-gray-200 rounded-md px-3 py-2"
+              className="bg-card border-border text-card-foreground rounded-md px-3 py-2"
             >
               <option value="Employee">Employee</option>
               <option value="Admin">Admin</option>
@@ -163,72 +174,87 @@ export function UserManagement({ users, onUserChange }: UserManagementProps) {
               type="password"
               placeholder="Password"
               value={newUser.password}
-              onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
-              className="bg-gray-900 border-gray-700 text-gray-200"
+              onChange={(e) =>
+                setNewUser({ ...newUser, password: e.target.value })
+              }
+              className="bg-card border-border text-card-foreground"
             />
             <Button
               onClick={addUser}
-              className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700"
+              className="bg-gradient-to-r from-primary to-secondary hover:from-primary/90 hover:to-secondary/90"
             >
               <Plus className="mr-2 h-4 w-4" /> Add User
             </Button>
           </div>
 
+          {/* Search input */}
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="Search users..."
               value={searchTerm}
               onChange={(e) => handleSearch(e.target.value)}
-              className="bg-gray-900 border-gray-700 text-gray-200 pl-10"
+              className="bg-card border-border text-card-foreground pl-10"
             />
           </div>
 
-          <div className="rounded-md border border-gray-800 overflow-hidden">
+          {/* Users table */}
+          <div className="rounded-md border border-border overflow-hidden">
             <Table>
-              <TableHeader className="bg-gray-900/50">
-                <TableRow className="hover:bg-transparent border-gray-800">
-                  <TableHead className="text-gray-400 font-medium">Email</TableHead>
-                  <TableHead className="text-gray-400 font-medium">Role</TableHead>
-                  <TableHead className="text-gray-400 font-medium text-right">
+              <TableHeader className="bg-card/50">
+                <TableRow className="hover:bg-transparent border-border">
+                  <TableHead className="text-muted-foreground font-medium">
+                    Email
+                  </TableHead>
+                  <TableHead className="text-muted-foreground font-medium">
+                    Role
+                  </TableHead>
+                  <TableHead className="text-muted-foreground font-medium text-right">
                     Actions
                   </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredUsers.map((user) => (
-                  <TableRow key={user._id} className="border-gray-800 hover:bg-gray-800/30">
-                    <TableCell className="font-medium text-gray-300">
+                  <TableRow
+                    key={user._id}
+                    className="border-border hover:bg-card/30"
+                  >
+                    <TableCell className="font-medium text-card-foreground">
                       {user.email}
                     </TableCell>
                     <TableCell>
                       <span
                         className={`px-2 py-1 rounded-full text-xs ${
                           user.role === "Admin"
-                            ? "bg-purple-500/20 text-purple-300"
-                            : "bg-blue-500/20 text-blue-300"
+                            ? "bg-secondary/20 text-secondary-foreground"
+                            : "bg-primary/20 text-primary-foreground"
                         }`}
                       >
                         {user.role}
                       </span>
                     </TableCell>
                     <TableCell className="text-right">
-                      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+                      <Dialog
+                        open={isEditDialogOpen}
+                        onOpenChange={setIsEditDialogOpen}
+                      >
                         <DialogTrigger asChild>
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="text-blue-400 hover:text-blue-300 hover:bg-blue-500/10"
+                            className="text-primary hover:text-primary/80 hover:bg-primary/10"
                             onClick={() => setEditingUser(user)}
                           >
                             <Pencil className="h-4 w-4" />
                           </Button>
                         </DialogTrigger>
-                        <DialogContent className="bg-gray-900 text-gray-200">
+                        <DialogContent className="bg-card text-card-foreground">
                           <DialogHeader>
                             <DialogTitle>Edit User</DialogTitle>
                             <DialogDescription>
-                              Make changes to the user here. Click save when you're done.
+                              Make changes to the user here. Click save when you're
+                              done.
                             </DialogDescription>
                           </DialogHeader>
                           <div className="grid gap-4 py-4">
@@ -244,7 +270,7 @@ export function UserManagement({ users, onUserChange }: UserManagementProps) {
                                     prev ? { ...prev, email: e.target.value } : null
                                   )
                                 }
-                                className="col-span-3 bg-gray-800 border-gray-700"
+                                className="col-span-3 bg-card border-border"
                               />
                             </div>
                             <div className="grid grid-cols-4 items-center gap-4">
@@ -257,11 +283,14 @@ export function UserManagement({ users, onUserChange }: UserManagementProps) {
                                 onChange={(e) =>
                                   setEditingUser((prev) =>
                                     prev
-                                      ? { ...prev, role: e.target.value as "Employee" | "Admin" }
+                                      ? {
+                                          ...prev,
+                                          role: e.target.value as "Employee" | "Admin",
+                                        }
                                       : null
                                   )
                                 }
-                                className="col-span-3 bg-gray-800 border-gray-700 rounded-md px-3 py-2"
+                                className="col-span-3 bg-card border-border rounded-md px-3 py-2"
                               >
                                 <option value="Employee">Employee</option>
                                 <option value="Admin">Admin</option>
@@ -269,7 +298,10 @@ export function UserManagement({ users, onUserChange }: UserManagementProps) {
                             </div>
                           </div>
                           <DialogFooter>
-                            <Button onClick={updateUserHandler} className="bg-blue-500 hover:bg-blue-600">
+                            <Button
+                              onClick={updateUserHandler}
+                              className="bg-primary hover:bg-primary/90"
+                            >
                               Save changes
                             </Button>
                           </DialogFooter>
@@ -280,26 +312,27 @@ export function UserManagement({ users, onUserChange }: UserManagementProps) {
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="text-red-400 hover:text-red-300 hover:bg-red-500/10 ml-1"
+                            className="text-destructive hover:text-destructive-foreground hover:bg-destructive/10 ml-1"
                           >
                             <Trash className="h-4 w-4" />
                           </Button>
                         </AlertDialogTrigger>
-                        <AlertDialogContent className="bg-gray-900 text-gray-200">
+                        <AlertDialogContent className="bg-card text-card-foreground">
                           <AlertDialogHeader>
                             <AlertDialogTitle>
                               Are you absolutely sure?
                             </AlertDialogTitle>
                             <AlertDialogDescription>
-                              This action cannot be undone. This will permanently delete the user account.
+                              This action cannot be undone. This will permanently
+                              delete the user account.
                             </AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>
-                            <AlertDialogCancel className="bg-gray-800 text-gray-200 hover:bg-gray-700">
+                            <AlertDialogCancel className="bg-card hover:bg-card/90 text-card-foreground">
                               Cancel
                             </AlertDialogCancel>
                             <AlertDialogAction
-                              className="bg-red-600 hover:bg-red-700"
+                              className="bg-destructive hover:bg-destructive/90"
                               onClick={() => deleteUserHandler(user._id)}
                             >
                               Delete

@@ -16,7 +16,7 @@ export default function EmployeeDashboard() {
 
   return (
     <div className="min-h-screen bg-black text-gray-100">
-      <GradientBackground />
+      {/* <GradientBackground /> */}
       <div className="flex h-screen overflow-hidden">
         <Sidebar />
         <div className="flex-1 overflow-auto">
