@@ -643,7 +643,7 @@ export function OnboardingAssistant({
                   </div>
                 )}
               </div>
-              
+
               {/* Chat input */}
               <div className="p-3 border-t border-border">
                 <div className="flex gap-2">
