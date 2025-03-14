@@ -30,11 +30,7 @@ export interface AgentCreate {
   role: string;
   description?: string;
   emails: string[];
-  steps?: Array<{
-    title: string;
-    description: string;
-    recordingUrl?: string;
-  }>;
+  steps?: Array<OnboardingStep>;
 }
 
 export interface AgentUpdate {
@@ -42,7 +38,14 @@ export interface AgentUpdate {
   role?: string;
   description?: string;
   emails?: string[];
-  steps?: Array<{ title: string; description: string }>;
+  steps?: Array<OnboardingStep>;
+}
+
+export interface OnboardingStep {
+  title: string;
+  description: string;
+  recordingUrl?: string;
+  _id?: string;
 }
 
 // Set your API base URL.
@@ -176,6 +179,60 @@ export async function uploadRecording(
   return response.json();
 }
 
+
+export const updateAgentSteps = async (agentId: string, steps: OnboardingStep[]): Promise<any> => {
+  try {
+    const response = await fetch(`/api/agents/${agentId}/steps`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ steps }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to update steps order');
+    }
+
+    return response.json();
+  } catch (error) {
+    console.error('Error updating steps:', error);
+    throw error;
+  }
+};
+
+export const fetchAgentSteps = async (agentId: string): Promise<OnboardingStep[]> => {
+  try {
+    const response = await fetch(`/api/agents/${agentId}/steps`);
+    
+    if (!response.ok) {
+      throw new Error('Failed to fetch steps');
+    }
+    
+    return response.json();
+  } catch (error) {
+    console.error('Error fetching steps:', error);
+    return [];
+  }
+};
+
+export const deleteStep = async (agentId: string, stepId: string): Promise<boolean> => {
+  try {
+    const response = await fetch(`/api/agents/${agentId}/steps/${stepId}`, {
+      method: 'DELETE',
+    });
+    
+    if (!response.ok) {
+      throw new Error('Failed to delete step');
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Error deleting step:', error);
+    return false;
+  }
+};
+
 // GET /agents/{id}
 export async function getAgent(agentId: string): Promise<Agent> {
   const response = await fetch(`${API_BASE}/agents/${agentId}`);
@@ -217,3 +274,25 @@ export async function deleteAgent(agentId: string): Promise<void> {
     throw new Error(error.detail || 'Failed to delete agent');
   }
 }
+
+export const deleteRecording = async (recordingId: string): Promise<boolean> => {
+  try {
+    // Extract the recording ID from the URL if it's a full URL
+    const id = recordingId.startsWith('http://localhost:8000/recordings/') 
+      ? recordingId.split('http://localhost:8000/recordings/')[1] 
+      : recordingId;
+      
+    const response = await fetch(`http://localhost:8000/recordings/${id}`, {
+      method: 'DELETE',
+    });
+    
+    if (!response.ok) {
+      throw new Error('Failed to delete recording');
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Error deleting recording:', error);
+    return false;
+  }
+};

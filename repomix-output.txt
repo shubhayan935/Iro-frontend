@@ -70,6 +70,7 @@ app/
   providers.tsx
 components/
   admin/
+    delete-confirmation.tsx
     expanded-employee-row.tsx
     record-onboarding.tsx
     sidebar.tsx
@@ -166,80 +167,93 @@ Files
 ================
 File: app/admin/agents/[id]/edit/page.tsx
 ================
-"use client"
+"use client";
 
-import type React from "react"
-
-import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { Plus, X, GripVertical } from "lucide-react"
-import { getAgent, updateAgent, type Agent, type AgentUpdate } from "@/lib/api"
-import { toast } from "@/components/ui/use-toast"
+import type React from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { Reorder } from "framer-motion";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Plus, X, Video, Trash2, Loader2 } from "lucide-react";
+import { RecordOnboarding } from "@/components/admin/record-onboarding";
+import { DeleteConfirmation } from "@/components/admin/delete-confirmation";
+import {
+  getAgent,
+  updateAgent,
+  updateAgentSteps,
+  deleteStep,
+  type Agent,
+  type AgentUpdate,
+  type OnboardingStep,
+} from "@/lib/api";
+import { toast } from "@/components/ui/use-toast";
 
 export default function EditAgent({ params }: { params: { id: string } }) {
-  const [agent, setAgent] = useState<Agent | null>(null)
-  const [name, setName] = useState("")
-  const [role, setRole] = useState("")
-  const [description, setDescription] = useState("")
-  const [emails, setEmails] = useState<string[]>([])
-  const [newEmail, setNewEmail] = useState("")
-  const [steps, setSteps] = useState<Array<{ title: string; description: string }>>([])
-  const [newStep, setNewStep] = useState({ title: "", description: "" })
-  const router = useRouter()
+  const [agent, setAgent] = useState<Agent | null>(null);
+  const [name, setName] = useState("");
+  const [role, setRole] = useState("");
+  const [description, setDescription] = useState("");
+  const [emails, setEmails] = useState<string[]>([]);
+  const [newEmail, setNewEmail] = useState("");
+  const [steps, setSteps] = useState<OnboardingStep[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [stepToDelete, setStepToDelete] = useState<number | null>(null);
+  const router = useRouter();
 
   useEffect(() => {
-    fetchAgent()
-  }, [])
+    fetchAgent();
+  }, []);
 
   const fetchAgent = async () => {
     try {
-      const fetchedAgent = await getAgent(params.id)
-      setAgent(fetchedAgent)
-      setName(fetchedAgent.name)
-      setRole(fetchedAgent.role)
-      setDescription(fetchedAgent.description || "")
-      setEmails(fetchedAgent.emails || [])
-      setSteps(fetchedAgent.steps || [])
+      const fetchedAgent = await getAgent(params.id);
+      setAgent(fetchedAgent);
+      setName(fetchedAgent.name);
+      setRole(fetchedAgent.role);
+      setDescription(fetchedAgent.description || "");
+      setEmails(fetchedAgent.emails || []);
+      // Ensure each step has an _id
+      const formattedSteps = (fetchedAgent.steps || []).map((step: any) => ({
+        ...step,
+        _id: step._id || `step-${Math.random().toString(36).substring(2, 11)}`,
+      }));
+      setSteps(formattedSteps);
     } catch (error) {
-      console.error("Failed to fetch agent:", error)
+      console.error("Failed to fetch agent:", error);
       toast({
         title: "Error",
         description: "Failed to load agent details. Please try again.",
         variant: "destructive",
-      })
+      });
     }
-  }
+  };
 
   const addEmail = (e: React.FormEvent) => {
-    e.preventDefault()
+    e.preventDefault();
     if (newEmail && !emails.includes(newEmail)) {
-      setEmails([...emails, newEmail])
-      setNewEmail("")
+      setEmails([...emails, newEmail]);
+      setNewEmail("");
     }
-  }
+  };
 
   const removeEmail = (email: string) => {
-    setEmails(emails.filter((e) => e !== email))
-  }
-
-  const addStep = () => {
-    if (newStep.title) {
-      setSteps([...steps, newStep])
-      setNewStep({ title: "", description: "" })
-    }
-  }
-
-  const removeStep = (index: number) => {
-    setSteps(steps.filter((_, i) => i !== index))
-  }
+    setEmails(emails.filter((e) => e !== email));
+  };
 
   const handleUpdate = async () => {
-    if (!agent) return
+    if (!agent) return;
+    setIsLoading(true);
 
     const updatedAgent: AgentUpdate = {
       name,
@@ -247,174 +261,300 @@ export default function EditAgent({ params }: { params: { id: string } }) {
       description,
       emails,
       steps,
-    }
+    };
 
     try {
-      await updateAgent(agent._id, updatedAgent)
+      await updateAgent(agent._id, updatedAgent);
       toast({
         title: "Success",
         description: "Agent updated successfully.",
-      })
-      router.push(`/admin/agents/${agent._id}`)
+      });
+      router.push(`/admin/agents/${agent._id}`);
     } catch (error) {
-      console.error("Failed to update agent:", error)
+      console.error("Failed to update agent:", error);
       toast({
         title: "Error",
         description: "Failed to update agent. Please try again.",
         variant: "destructive",
-      })
+      });
+    } finally {
+      setIsLoading(false);
     }
-  }
+  };
 
-  if (!agent) return <div>Loading...</div>
+  const handleStartRecording = () => {
+    setIsRecording(true);
+  };
+
+  const handleFinishRecording = (newSteps: OnboardingStep[]) => {
+    setIsRecording(false);
+    // Merge the new steps with the existing steps and update DB
+    setSteps((prevSteps) => {
+      const combined = [...prevSteps, ...newSteps];
+      if (agent?._id) {
+        updateStepsInDatabase(combined);
+      }
+      return combined;
+    });
+  };
+
+  const updateStepsInDatabase = async (stepsToUpdate: OnboardingStep[]) => {
+    if (!agent?._id) return;
+    try {
+      await updateAgentSteps(agent._id, stepsToUpdate);
+      toast({
+        title: "Success",
+        description: "Onboarding steps updated successfully.",
+      });
+    } catch (error) {
+      console.error("Error updating steps:", error);
+    }
+  };
+
+  // Handler for reordering steps via drag and drop
+  const handleReorder = async (newOrder: OnboardingStep[]) => {
+    setSteps(newOrder);
+    if (agent?._id) {
+      updateStepsInDatabase(newOrder);
+    }
+  };
+
+  // Delete step handlers
+  const confirmDeleteStep = (index: number) => {
+    setStepToDelete(index);
+  };
+
+  const handleDeleteStep = async () => {
+    if (stepToDelete === null || !agent) return;
+
+    const stepToRemove = steps[stepToDelete];
+    const newSteps = [...steps];
+    newSteps.splice(stepToDelete, 1);
+    setSteps(newSteps);
+
+    if (stepToRemove._id) {
+      try {
+        await deleteStep(agent._id, stepToRemove._id);
+        toast({
+          title: "Success",
+          description: "Step deleted successfully.",
+        });
+      } catch (error) {
+        console.error("Error deleting step:", error);
+        // Revert deletion on error
+        setSteps(steps);
+        toast({
+          title: "Error",
+          description: "Failed to delete step. Please try again.",
+          variant: "destructive",
+        });
+      }
+    }
+    setStepToDelete(null);
+  };
+
+  const cancelDeleteStep = () => {
+    setStepToDelete(null);
+  };
+
+  if (!agent)
+    return (
+      <div className="p-6 flex justify-center items-center">
+        <Loader2 className="h-6 w-6 animate-spin mr-2" />
+        <span>Loading agent details...</span>
+      </div>
+    );
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
-      <h1 className="text-2xl font-semibold mb-6 text-gray-200">Edit Agent</h1>
-      <Card className="bg-[#1C1C1C] border-gray-800">
+      <h1 className="text-2xl font-semibold mb-6 text-foreground">
+        Edit Agent
+      </h1>
+      <Card className="bg-card border border-border">
         <CardHeader>
-          <CardTitle className="text-gray-200">Agent Details</CardTitle>
-          <CardDescription>Modify your onboarding agent configuration</CardDescription>
+          <CardTitle className="text-foreground">Agent Details</CardTitle>
+          <CardDescription>
+            Modify your onboarding agent configuration
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="grid gap-2">
-            <Label htmlFor="name" className="text-gray-300">
-              Agent Name
-            </Label>
-            <Input
-              id="name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="bg-gray-900 border-gray-700 text-gray-200"
-            />
-          </div>
-
-          <div className="grid gap-2">
-            <Label htmlFor="role" className="text-gray-300">
-              Role
-            </Label>
-            <Input
-              id="role"
-              value={role}
-              onChange={(e) => setRole(e.target.value)}
-              className="bg-gray-900 border-gray-700 text-gray-200"
-            />
-          </div>
-
-          <div className="grid gap-2">
-            <Label htmlFor="description" className="text-gray-300">
-              Description
-            </Label>
-            <Textarea
-              id="description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className="bg-gray-900 border-gray-700 text-gray-200"
-            />
-          </div>
-
-          <div className="grid gap-2">
-            <Label className="text-gray-300">Authorized Employees</Label>
-            <form onSubmit={addEmail} className="flex gap-2">
+          {/* Agent Information */}
+          <div className="space-y-6">
+            <div className="grid gap-2">
+              <Label htmlFor="name" className="text-muted-foreground">
+                Agent Name
+              </Label>
               <Input
-                type="email"
-                placeholder="Add employee email"
-                value={newEmail}
-                onChange={(e) => setNewEmail(e.target.value)}
-                className="bg-gray-900 border-gray-700 text-gray-200"
+                id="name"
+                placeholder="Enter agent name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="bg-input border-input text-foreground"
               />
-              <Button type="submit">
-                <Plus size={16} className="mr-2" />
-                Add
-              </Button>
-            </form>
-            <div className="flex flex-wrap gap-2 mt-2">
-              {emails.map((email) => (
-                <div key={email} className="flex items-center gap-2 bg-gray-800 text-gray-200 px-3 py-1 rounded-full">
-                  {email}
-                  <button onClick={() => removeEmail(email)} className="text-gray-400 hover:text-gray-200">
-                    <X size={14} />
-                  </button>
-                </div>
-              ))}
             </div>
-          </div>
 
-          <div className="grid gap-2">
-            <Label className="text-gray-300">Onboarding Steps</Label>
-            <div className="space-y-4">
-              {steps.map((step, index) => (
-                <Card key={index} className="bg-gray-900 border-gray-700">
-                  <CardContent className="flex items-start gap-4 p-4">
-                    <GripVertical className="text-gray-500 mt-1" size={20} />
-                    <div className="flex-1">
-                      <Input
-                        value={step.title}
-                        onChange={(e) => {
-                          const newSteps = [...steps]
-                          newSteps[index].title = e.target.value
-                          setSteps(newSteps)
-                        }}
-                        className="bg-gray-800 border-gray-600 text-gray-200 mb-2"
-                        placeholder="Step title"
-                      />
-                      <Textarea
-                        value={step.description}
-                        onChange={(e) => {
-                          const newSteps = [...steps]
-                          newSteps[index].description = e.target.value
-                          setSteps(newSteps)
-                        }}
-                        className="bg-gray-800 border-gray-600 text-gray-200"
-                        placeholder="Step description"
-                      />
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => removeStep(index)}
-                      className="text-gray-400 hover:text-gray-200"
+            <div className="grid gap-2">
+              <Label htmlFor="role" className="text-muted-foreground">
+                Role
+              </Label>
+              <Input
+                id="role"
+                placeholder="Enter agent role"
+                value={role}
+                onChange={(e) => setRole(e.target.value)}
+                className="bg-input border-input text-foreground"
+              />
+            </div>
+
+            <div className="grid gap-2">
+              <Label htmlFor="description" className="text-muted-foreground">
+                Description
+              </Label>
+              <Textarea
+                id="description"
+                placeholder="Enter agent description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                className="bg-input border-input text-foreground"
+              />
+            </div>
+
+            {/* Authorized Employee Emails */}
+            <div className="grid gap-2">
+              <Label className="text-muted-foreground">Authorized Employees</Label>
+              <form onSubmit={addEmail} className="flex gap-2">
+                <Input
+                  type="email"
+                  placeholder="Add employee email"
+                  value={newEmail}
+                  onChange={(e) => setNewEmail(e.target.value)}
+                  className="bg-input border-input text-foreground"
+                />
+                <Button type="submit">
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add
+                </Button>
+              </form>
+              {emails.length > 0 && (
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {emails.map((email) => (
+                    <div
+                      key={email}
+                      className="flex items-center gap-2 bg-card text-foreground px-3 py-1 rounded-full"
                     >
-                      <X size={16} />
-                    </Button>
-                  </CardContent>
-                </Card>
-              ))}
-              <Card className="bg-gray-900 border-gray-700 border-dashed">
-                <CardContent className="p-4">
-                  <div className="space-y-2">
-                    <Input
-                      value={newStep.title}
-                      onChange={(e) => setNewStep({ ...newStep, title: e.target.value })}
-                      className="bg-gray-800 border-gray-600 text-gray-200"
-                      placeholder="New step title"
-                    />
-                    <Textarea
-                      value={newStep.description}
-                      onChange={(e) => setNewStep({ ...newStep, description: e.target.value })}
-                      className="bg-gray-800 border-gray-600 text-gray-200"
-                      placeholder="New step description"
-                    />
-                    <Button onClick={addStep} className="w-full">
-                      <Plus size={16} className="mr-2" />
-                      Add Step
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
+                      {email}
+                      <button
+                        onClick={() => removeEmail(email)}
+                        className="text-muted-foreground hover:text-foreground"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Onboarding Steps */}
+            <div className="grid gap-2">
+              <Label className="text-muted-foreground">Onboarding Steps</Label>
+              {steps.length > 0 ? (
+                // Wrap the reorderable list in a scrollable container
+                <div className="max-h-96 overflow-y-auto">
+                  <Reorder.Group
+                    axis="y"
+                    values={steps}
+                    onReorder={handleReorder}
+                    className="rounded-md bg-muted/40 p-1 space-y-1"
+                  >
+                    {steps.map((step, index) => (
+                      <Reorder.Item
+                        key={step._id || `step-${index}`}
+                        value={step}
+                        whileDrag={{ scale: 1.02 }}
+                        className="flex items-center p-3 rounded-md transition-colors bg-card hover:bg-muted border border-border group"
+                      >
+                        {/* Grip icon as a visual drag handle */}
+                        <div className="mr-2 cursor-grab select-none">
+                          <svg
+                            className="h-5 w-5 text-muted-foreground"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth={2}
+                            viewBox="0 0 24 24"
+                          >
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M4 9h16M4 15h16" />
+                          </svg>
+                        </div>
+                        <div className="flex-1">
+                          <h3 className="font-semibold text-foreground truncate">
+                            {step.title}
+                          </h3>
+                          <p className="text-muted-foreground text-sm line-clamp-1 mt-1">
+                            {step.description}
+                          </p>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => confirmDeleteStep(index)}
+                          className="text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                          aria-label="Delete step"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </Reorder.Item>
+                    ))}
+                  </Reorder.Group>
+                </div>
+              ) : (
+                <p className="text-muted-foreground">
+                  No onboarding steps recorded yet.
+                </p>
+              )}
+              <Button variant="outline" onClick={handleStartRecording} className="mt-2">
+                <Video className="mr-2 h-4 w-4" />
+                Record Onboarding
+              </Button>
             </div>
           </div>
 
+          {/* Action Buttons */}
           <div className="flex justify-end gap-3 mt-6">
-            <Button variant="outline" onClick={() => router.push(`/admin/agents/${agent._id}`)}>
+            <Button
+              variant="outline"
+              onClick={() => router.push(`/admin/agents/${agent._id}`)}
+              disabled={isLoading}
+            >
               Cancel
             </Button>
-            <Button onClick={handleUpdate}>Save Changes</Button>
+            <Button onClick={handleUpdate} disabled={isLoading}>
+              {isLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                "Save Changes"
+              )}
+            </Button>
           </div>
         </CardContent>
       </Card>
+
+      {isRecording && (
+        <RecordOnboarding onFinish={handleFinishRecording} agentId={agent._id} />
+      )}
+
+      <DeleteConfirmation
+        isOpen={stepToDelete !== null}
+        title="Delete Onboarding Step"
+        description="Are you sure you want to delete this step? This action cannot be undone."
+        onConfirm={handleDeleteStep}
+        onCancel={cancelDeleteStep}
+      />
     </div>
-  )
+  );
 }
 
 ================
@@ -466,10 +606,10 @@ export default function AgentPage({ params }: { params: { id: string } }) {
   if (!agent) return <div>Agent not found</div>
 
   return (
-    <div className="p-6 text-gray-200">
+    <div className="p-6 text-card-foreground">
       <div className="mb-8">
         <h1 className="text-2xl font-semibold mb-1">{agent.name}</h1>
-        <div className="flex items-center gap-6 text-sm text-gray-400">
+        <div className="flex items-center gap-6 text-sm text-muted-foreground">
           <div className="flex items-center gap-2">
             <span className="w-6 h-6 rounded-full bg-gray-700" />
             <span>Role: {agent.role}</span>
@@ -490,14 +630,14 @@ export default function AgentPage({ params }: { params: { id: string } }) {
       </div>
 
       <div className="mb-6">
-        <div className="flex border-b border-gray-800">
+        <div className="flex border-b border-border">
           {["Activity", "Workflow", "Settings"].map((tab) => (
             <button
               key={tab}
               className={`px-4 py-2 font-medium ${
                 activeTab.toLowerCase() === tab.toLowerCase()
-                  ? "text-blue-500 border-b-2 border-blue-500"
-                  : "text-gray-400 hover:text-gray-200"
+                  ? "text-primary border-b-2 border-primary"
+                  : "text-muted-foreground hover:text-card-foreground"
               }`}
               onClick={() => setActiveTab(tab.toLowerCase())}
             >
@@ -508,10 +648,10 @@ export default function AgentPage({ params }: { params: { id: string } }) {
       </div>
 
       {activeTab === "activity" && (
-        <Card className="bg-[#1C1C1C] border-gray-800">
+        <Card className="bg-card border-border">
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
-              <CardTitle className="text-gray-200">Recent Activity</CardTitle>
+              <CardTitle className="text-card-foreground">Recent Activity</CardTitle>
               <CardDescription>View recent onboarding sessions and employee progress</CardDescription>
             </div>
             <Button variant="ghost" size="icon">
@@ -521,12 +661,12 @@ export default function AgentPage({ params }: { params: { id: string } }) {
           <CardContent>
             <Table>
               <TableHeader>
-                <TableRow className="border-gray-800">
-                  <TableHead className="text-gray-400">Employee</TableHead>
-                  <TableHead className="text-gray-400">Email</TableHead>
-                  <TableHead className="text-gray-400">Progress</TableHead>
-                  <TableHead className="text-gray-400">Status</TableHead>
-                  <TableHead className="text-gray-400"></TableHead>
+                <TableRow className="border-border">
+                  <TableHead className="text-muted-foreground">Employee</TableHead>
+                  <TableHead className="text-muted-foreground">Email</TableHead>
+                  <TableHead className="text-muted-foreground">Progress</TableHead>
+                  <TableHead className="text-muted-foreground">Status</TableHead>
+                  <TableHead className="text-muted-foreground"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -534,12 +674,12 @@ export default function AgentPage({ params }: { params: { id: string } }) {
                   <>
                     <TableRow
                       key={i}
-                      className="border-gray-800 cursor-pointer hover:bg-gray-800/50"
+                      className="border-border cursor-pointer hover:bg-gray-800/50"
                       onClick={() => toggleRowExpansion(email)}
                     >
                       <TableCell className="text-gray-300">{email.split("@")[0]}</TableCell>
-                      <TableCell className="text-gray-400">{email}</TableCell>
-                      <TableCell className="text-gray-400">In Progress</TableCell>
+                      <TableCell className="text-muted-foreground">{email}</TableCell>
+                      <TableCell className="text-muted-foreground">In Progress</TableCell>
                       <TableCell className="text-gray-300">Active</TableCell>
                       <TableCell>
                         <Button variant="ghost" size="icon">
@@ -574,9 +714,9 @@ export default function AgentPage({ params }: { params: { id: string } }) {
       )}
 
       {activeTab === "workflow" && (
-        <Card className="bg-[#1C1C1C] border-gray-800">
+        <Card className="bg-card border-border">
           <CardHeader>
-            <CardTitle className="text-gray-200">Workflow</CardTitle>
+            <CardTitle className="text-card-foreground">Workflow</CardTitle>
             <CardDescription>Manage the onboarding workflow for this agent</CardDescription>
           </CardHeader>
           <CardContent>
@@ -592,13 +732,13 @@ export default function AgentPage({ params }: { params: { id: string } }) {
       )}
 
       {activeTab === "settings" && (
-        <Card className="bg-[#1C1C1C] border-gray-800">
+        <Card className="bg-card border-border">
           <CardHeader>
-            <CardTitle className="text-gray-200">Settings</CardTitle>
+            <CardTitle className="text-card-foreground">Settings</CardTitle>
             <CardDescription>Configure agent settings</CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="text-gray-400">{agent.description}</p>
+            <p className="text-muted-foreground">{agent.description}</p>
           </CardContent>
         </Card>
       )}
@@ -612,9 +752,9 @@ File: app/admin/create/page.tsx
 "use client"
 
 import type React from "react"
-
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
+import { Reorder } from "framer-motion"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -626,10 +766,17 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Plus, X, Video } from "lucide-react"
+import { Plus, X, Video, Trash2, Loader2 } from "lucide-react"
 import { RecordOnboarding } from "@/components/admin/record-onboarding"
+import { DeleteConfirmation } from "@/components/admin/delete-confirmation"
 import { useUser } from "@/app/context/UserContext"
-import { createAgent, type AgentCreate } from "@/lib/api"
+import {
+  createAgent,
+  updateAgentSteps,
+  deleteStep,
+  type AgentCreate,
+  type OnboardingStep
+} from "@/lib/api"
 import { toast } from "@/components/ui/use-toast"
 
 export default function CreateAgent() {
@@ -641,9 +788,19 @@ export default function CreateAgent() {
   const [emails, setEmails] = useState<string[]>([])
   const [newEmail, setNewEmail] = useState("")
   const [isRecording, setIsRecording] = useState(false)
-  const [recordedSteps, setRecordedSteps] = useState<
-    Array<{ title: string; description: string }>
-  >([])
+  const [recordedSteps, setRecordedSteps] = useState<OnboardingStep[]>([])
+  const [isLoading, setIsLoading] = useState(false)
+  const [stepToDelete, setStepToDelete] = useState<number | null>(null)
+  const [agentId, setAgentId] = useState<string | null>(null)
+
+  useEffect(() => {
+    // If we have an agentId from URL, we're in edit mode and should fetch the steps
+    const id = new URLSearchParams(window.location.search).get('id')
+    if (id) {
+      setAgentId(id)
+      // You'd also fetch other agent details here
+    }
+  }, [])
 
   const addEmail = (e: React.FormEvent) => {
     e.preventDefault()
@@ -662,10 +819,31 @@ export default function CreateAgent() {
   }
 
   const handleFinishRecording = (
-    steps: Array<{ title: string; description: string }>
+    steps: OnboardingStep[]
   ) => {
     setIsRecording(false)
-    setRecordedSteps(steps)
+    
+    // Merge new steps with existing ones
+    setRecordedSteps(prevSteps => [...prevSteps, ...steps])
+    
+    // If we already have an agentId (edit mode), update the steps in the database
+    if (agentId) {
+      updateStepsInDatabase([...recordedSteps, ...steps])
+    }
+  }
+  
+  const updateStepsInDatabase = async (steps: OnboardingStep[]) => {
+    if (!agentId) return
+    
+    try {
+      await updateAgentSteps(agentId, steps)
+      toast({
+        title: "Success",
+        description: "Onboarding steps updated successfully.",
+      })
+    } catch (error) {
+      console.error("Error updating steps:", error)
+    }
   }
 
   const handleCreateAgent = async () => {
@@ -678,20 +856,28 @@ export default function CreateAgent() {
       return
     }
 
-    const newAgent: AgentCreate = {
-      name,
-      role,
-      description,
-      emails,
-      steps: recordedSteps,
-    }
+    setIsLoading(true)
 
     try {
-      await createAgent(newAgent)
+      const newAgent: AgentCreate = {
+        name,
+        role,
+        description,
+        emails,
+        steps: recordedSteps,
+      }
+
+      const result = await createAgent(newAgent)
       toast({
         title: "Success",
         description: "Agent created successfully.",
       })
+      
+      // Update the agentId if it's a new agent
+      if (!agentId && result.id) {
+        setAgentId(result.id)
+      }
+      
       router.push("/admin")
     } catch (error) {
       toast({
@@ -699,26 +885,83 @@ export default function CreateAgent() {
         description: "Failed to create agent. Please try again.",
         variant: "destructive",
       })
+    } finally {
+      setIsLoading(false)
     }
+  }
+
+  // Reorder handler for Framer Motion
+  const handleReorder = async (newOrder: OnboardingStep[]) => {
+    setRecordedSteps(newOrder)
+    
+    // If we have an agentId, update the steps in the database
+    if (agentId) {
+      updateStepsInDatabase(newOrder)
+    }
+  }
+
+  // Delete step functions
+  const confirmDeleteStep = (index: number) => {
+    setStepToDelete(index)
+  }
+
+  const handleDeleteStep = async () => {
+    if (stepToDelete === null) return
+    
+    const stepToRemove = recordedSteps[stepToDelete]
+    
+    // Remove the step locally first for better UX
+    const newSteps = [...recordedSteps]
+    newSteps.splice(stepToDelete, 1)
+    setRecordedSteps(newSteps)
+    
+    // If we have an agentId and the step has an id, delete it from the database
+    if (agentId && stepToRemove._id) {
+      try {
+        await deleteStep(agentId, stepToRemove._id)
+        toast({
+          title: "Success",
+          description: "Step deleted successfully.",
+        })
+      } catch (error) {
+        console.error("Error deleting step:", error)
+        
+        // Put the step back if deletion failed
+        setRecordedSteps(recordedSteps)
+        
+        toast({
+          title: "Error",
+          description: "Failed to delete step. Please try again.",
+          variant: "destructive",
+        })
+      }
+    }
+    
+    // Reset the delete dialog
+    setStepToDelete(null)
+  }
+
+  const cancelDeleteStep = () => {
+    setStepToDelete(null)
   }
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
-      <h1 className="text-2xl font-semibold mb-6 text-gray-200">
-        Create New Agent
+      <h1 className="text-2xl font-semibold mb-6 text-foreground">
+        {agentId ? "Edit Agent" : "Create New Agent"}
       </h1>
-      <Card className="bg-[#1C1C1C] border-gray-800">
+      <Card className="bg-card border border-border">
         <CardHeader>
-          <CardTitle className="text-gray-200">Agent Details</CardTitle>
+          <CardTitle className="text-foreground">Agent Details</CardTitle>
           <CardDescription>
-            Configure your new onboarding agent
+            Configure your {agentId ? "" : "new"} onboarding agent
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="space-y-6">
             {/* Agent Name */}
             <div className="grid gap-2">
-              <Label htmlFor="agentName" className="text-gray-300">
+              <Label htmlFor="agentName" className="text-muted-foreground">
                 Agent Name
               </Label>
               <Input
@@ -726,12 +969,12 @@ export default function CreateAgent() {
                 placeholder="Enter agent name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="bg-gray-900 border-gray-700 text-gray-200"
+                className="bg-input border-input text-foreground"
               />
             </div>
             {/* Agent Role */}
             <div className="grid gap-2">
-              <Label htmlFor="agentRole" className="text-gray-300">
+              <Label htmlFor="agentRole" className="text-muted-foreground">
                 Role
               </Label>
               <Input
@@ -739,12 +982,12 @@ export default function CreateAgent() {
                 placeholder="Enter agent role"
                 value={role}
                 onChange={(e) => setRole(e.target.value)}
-                className="bg-gray-900 border-gray-700 text-gray-200"
+                className="bg-input border-input text-foreground"
               />
             </div>
             {/* Agent Description */}
             <div className="grid gap-2">
-              <Label htmlFor="agentDescription" className="text-gray-300">
+              <Label htmlFor="agentDescription" className="text-muted-foreground">
                 Description
               </Label>
               <Textarea
@@ -752,12 +995,12 @@ export default function CreateAgent() {
                 placeholder="Enter agent description"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                className="bg-gray-900 border-gray-700 text-gray-200"
+                className="bg-input border-input text-foreground"
               />
             </div>
             {/* Authorized Employee Emails */}
             <div className="grid gap-2">
-              <Label className="text-gray-300">
+              <Label className="text-muted-foreground">
                 Authorized Employee Emails
               </Label>
               <form onSubmit={addEmail} className="flex gap-2">
@@ -766,7 +1009,7 @@ export default function CreateAgent() {
                   placeholder="Enter employee email"
                   value={newEmail}
                   onChange={(e) => setNewEmail(e.target.value)}
-                  className="bg-gray-900 border-gray-700 text-gray-200"
+                  className="bg-input border-input text-foreground"
                 />
                 <Button type="submit">
                   <Plus className="mr-2 h-4 w-4" />
@@ -778,12 +1021,12 @@ export default function CreateAgent() {
                   {emails.map((email, index) => (
                     <li
                       key={index}
-                      className="flex items-center justify-between bg-gray-800 p-2 rounded"
+                      className="flex items-center justify-between bg-card p-2 rounded"
                     >
-                      <span className="text-gray-200">{email}</span>
+                      <span className="text-foreground">{email}</span>
                       <button
                         onClick={() => removeEmail(email)}
-                        className="text-gray-400 hover:text-gray-200"
+                        className="text-muted-foreground hover:text-foreground"
                       >
                         <X className="h-4 w-4" />
                       </button>
@@ -794,20 +1037,50 @@ export default function CreateAgent() {
             </div>
             {/* Onboarding Steps */}
             <div className="grid gap-2">
-              <Label className="text-gray-300">Onboarding Steps</Label>
+              <Label className="text-muted-foreground">Onboarding Steps</Label>
+              
               {recordedSteps.length > 0 ? (
-                <ul className="space-y-2">
+                <Reorder.Group
+                  axis="y"
+                  values={recordedSteps}
+                  onReorder={handleReorder}
+                  className="rounded-md bg-muted/40 p-1 space-y-1"
+                >
                   {recordedSteps.map((step, index) => (
-                    <li key={index} className="bg-gray-800 p-2 rounded">
-                      <h3 className="font-semibold text-gray-200">
-                        {step.title}
-                      </h3>
-                      <p className="text-gray-400">{step.description}</p>
-                    </li>
+                    <Reorder.Item
+                      key={step._id || `step-${index}-${Date.now()}`}
+                      value={step}
+                      whileDrag={{ scale: 1.02 }}
+                      className="flex items-center p-3 rounded-md transition-colors bg-card hover:bg-muted border border-border group"
+                    >
+                      {/* Grip icon as a visual drag handle */}
+                      <div className="mr-2 cursor-grab select-none">
+                        <svg className="h-5 w-5 text-muted-foreground" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M4 9h16M4 15h16" />
+                        </svg>
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="font-semibold text-foreground truncate">
+                          {step.title}
+                        </h3>
+                        <p className="text-muted-foreground text-sm line-clamp-1">
+                          {step.description}
+                        </p>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => confirmDeleteStep(index)}
+                        className="text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                        aria-label="Delete step"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </Reorder.Item>
                   ))}
-                </ul>
+                </Reorder.Group>
               ) : (
-                <p className="text-gray-400">
+                <p className="text-muted-foreground">
                   No onboarding steps recorded yet.
                 </p>
               )}
@@ -823,17 +1096,42 @@ export default function CreateAgent() {
           </div>
 
           <div className="flex justify-end gap-3 mt-6">
-            <Button variant="outline" onClick={() => router.push("/admin")}>
+            <Button 
+              variant="outline" 
+              onClick={() => router.push("/admin")}
+              disabled={isLoading}
+            >
               Cancel
             </Button>
-            <Button onClick={handleCreateAgent}>Create Agent</Button>
+            <Button 
+              onClick={handleCreateAgent}
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  {agentId ? "Updating..." : "Creating..."}
+                </>
+              ) : (
+                agentId ? "Update Agent" : "Create Agent"
+              )}
+            </Button>
           </div>
         </CardContent>
       </Card>
 
       {isRecording && (
-        <RecordOnboarding onFinish={handleFinishRecording} />
+        <RecordOnboarding onFinish={handleFinishRecording} agentId={agentId || undefined} />
       )}
+      
+      {/* Delete confirmation dialog */}
+      <DeleteConfirmation
+        isOpen={stepToDelete !== null}
+        title="Delete Onboarding Step"
+        description="Are you sure you want to delete this step? This action cannot be undone."
+        onConfirm={handleDeleteStep}
+        onCancel={cancelDeleteStep}
+      />
     </div>
   )
 }
@@ -841,7 +1139,6 @@ export default function CreateAgent() {
 ================
 File: app/admin/users/page.tsx
 ================
-// app/admin/users/page.tsx
 "use client"
 
 import { useQuery } from "@tanstack/react-query"
@@ -876,8 +1173,10 @@ export default function UsersPage() {
   return (
     <div className="p-6">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-white">User Management</h1>
-        <p className="text-gray-400">Add, edit, or remove users</p>
+        <h1 className="text-2xl font-bold text-foreground">User Management</h1>
+        <p className="text-muted-foreground">
+          Add, edit, or remove users
+        </p>
       </div>
 
       <UserManagement users={users || []} onUserChange={refetch} />
@@ -1155,9 +1454,9 @@ export default function EmployeeDashboard() {
 
   return (
     <div className="min-h-screen bg-black text-gray-100">
-      <GradientBackground />
+      {/* <GradientBackground /> */}
       <div className="flex h-screen overflow-hidden">
-        <Sidebar />
+        {/* <Sidebar /> */}
         <div className="flex-1 overflow-auto">
           <EmployeeHeader />
           <main className="p-6">
@@ -2176,8 +2475,71 @@ export function Providers({ children }: { children: React.ReactNode }) {
 }
 
 ================
+File: components/admin/delete-confirmation.tsx
+================
+"use client"
+
+import * as React from "react"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
+
+interface DeleteConfirmationProps {
+  isOpen: boolean
+  title: string
+  description: string
+  onConfirm: () => void
+  onCancel: () => void
+}
+
+export function DeleteConfirmation({
+  isOpen,
+  title,
+  description,
+  onConfirm,
+  onCancel,
+}: DeleteConfirmationProps) {
+  return (
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onCancel()}>
+      <DialogContent className="sm:max-w-[425px] bg-card border-border">
+        <DialogHeader>
+          <DialogTitle className="text-foreground">{title}</DialogTitle>
+          <DialogDescription className="text-muted-foreground">
+            {description}
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter className="flex flex-row justify-end gap-2 pt-4">
+          <Button
+            variant="outline"
+            onClick={onCancel}
+            className="border-border text-foreground hover:bg-muted"
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="destructive"
+            onClick={onConfirm}
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+          >
+            Delete
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+================
 File: components/admin/expanded-employee-row.tsx
 ================
+"use client"
+
 import { Card, CardContent } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 
@@ -2198,40 +2560,58 @@ interface ExpandedEmployeeRowProps {
 
 export function ExpandedEmployeeRow({ employee }: ExpandedEmployeeRowProps) {
   const progressPercentage =
-    (Number.parseInt(employee.progress.split("/")[0]) / Number.parseInt(employee.progress.split("/")[1])) * 100
+    (Number.parseInt(employee.progress.split("/")[0]) /
+      Number.parseInt(employee.progress.split("/")[1])) *
+    100
 
   return (
-    <Card className="bg-gray-800/50 border-gray-700">
-      <CardContent className="p-4 space-y-4">
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <h4 className="text-sm font-medium text-gray-400">Email</h4>
-            <p className="text-gray-200">{employee.email}</p>
+    <div className="animate-fadeIn">
+      <Card className="bg-card/40 border-border/10">
+        <CardContent className="p-4 space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <h4 className="text-sm font-medium text-muted-foreground">
+                Email
+              </h4>
+              <p className="text-card-foreground">{employee.email}</p>
+            </div>
+            <div>
+              <h4 className="text-sm font-medium text-muted-foreground">
+                Started
+              </h4>
+              <p className="text-card-foreground">{employee.started}</p>
+            </div>
           </div>
           <div>
-            <h4 className="text-sm font-medium text-gray-400">Started</h4>
-            <p className="text-gray-200">{employee.started}</p>
+            <h4 className="text-sm font-medium text-muted-foreground mb-2">
+              Progress
+            </h4>
+            <Progress value={progressPercentage} className="h-2" />
+            <p className="text-sm text-muted-foreground mt-1">
+              {employee.progress} steps completed
+            </p>
           </div>
-        </div>
-        <div>
-          <h4 className="text-sm font-medium text-gray-400 mb-2">Progress</h4>
-          <Progress value={progressPercentage} className="h-2" />
-          <p className="text-sm text-gray-400 mt-1">{employee.progress} steps completed</p>
-        </div>
-        <div>
-          <h4 className="text-sm font-medium text-gray-400">Last Activity</h4>
-          <p className="text-gray-200">{employee.lastActivity}</p>
-        </div>
-        <div>
-          <h4 className="text-sm font-medium text-gray-400">Next Step</h4>
-          <p className="text-gray-200">{employee.nextStep}</p>
-        </div>
-        <div>
-          <h4 className="text-sm font-medium text-gray-400">Notes</h4>
-          <p className="text-gray-200">{employee.notes}</p>
-        </div>
-      </CardContent>
-    </Card>
+          <div>
+            <h4 className="text-sm font-medium text-muted-foreground">
+              Last Activity
+            </h4>
+            <p className="text-card-foreground">{employee.lastActivity}</p>
+          </div>
+          <div>
+            <h4 className="text-sm font-medium text-muted-foreground">
+              Next Step
+            </h4>
+            <p className="text-card-foreground">{employee.nextStep}</p>
+          </div>
+          <div>
+            <h4 className="text-sm font-medium text-muted-foreground">
+              Notes
+            </h4>
+            <p className="text-card-foreground">{employee.notes}</p>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   )
 }
 
@@ -2241,61 +2621,54 @@ File: components/admin/record-onboarding.tsx
 "use client"
 
 import { useState, useRef, useEffect } from "react"
+import { Reorder } from "framer-motion"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
 import { toast } from "@/components/ui/use-toast"
-import { Mic, Video, X, Square, Loader2 } from "lucide-react"
-
-interface Step {
-  title: string
-  description: string
-  recordingUrl?: string 
-}
+import { Mic, Video, X, Square, Loader2, Trash2 } from "lucide-react"
+import { DeleteConfirmation } from "@/components/admin/delete-confirmation"
+import { deleteRecording, uploadRecording, updateAgentSteps, type OnboardingStep } from "@/lib/api"
 
 interface RecordOnboardingProps {
-  onFinish: (steps: Step[]) => void
+  onFinish: (steps: OnboardingStep[]) => void
+  // Optional agentId; if provided, reordering will update the DB
+  agentId?: string
 }
 
-export function RecordOnboarding({ onFinish }: RecordOnboardingProps) {
+export function RecordOnboarding({ onFinish, agentId }: RecordOnboardingProps) {
   const [isRecording, setIsRecording] = useState(false)
   const [recordingTime, setRecordingTime] = useState(0)
   const [recordingBlob, setRecordingBlob] = useState<Blob | null>(null)
-  const [steps, setSteps] = useState<Step[]>([])
+  const [steps, setSteps] = useState<OnboardingStep[]>([])
   const [processingStep, setProcessingStep] = useState(false)
   const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null)
+  const [stepToDelete, setStepToDelete] = useState<number | null>(null)
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const mediaStreamRef = useRef<MediaStream | null>(null)
   const recordingChunksRef = useRef<BlobPart[]>([])
   const timerRef = useRef<NodeJS.Timeout | null>(null)
 
-  // Clean up when component unmounts
   useEffect(() => {
     return () => {
-      if (mediaStreamRef.current) {
-        mediaStreamRef.current.getTracks().forEach(track => track.stop())
-      }
-      if (timerRef.current) {
-        clearInterval(timerRef.current)
-      }
-      if (pollingInterval) {
-        clearInterval(pollingInterval)
-      }
+      mediaStreamRef.current?.getTracks().forEach((track) => track.stop())
+      if (timerRef.current) clearInterval(timerRef.current)
+      if (pollingInterval) clearInterval(pollingInterval)
     }
   }, [pollingInterval])
 
   const startRecording = async () => {
     try {
-      // Request screen sharing and audio
       const displayStream = await navigator.mediaDevices.getDisplayMedia({
-        video: { 
-          cursor: "always",
-          displaySurface: "browser"
-        },
-        audio: true
+        video: { cursor: "always", displaySurface: "browser" },
+        audio: true,
       })
-      
-      // Try to get microphone audio as well
+
       let micStream: MediaStream | null = null
       try {
         micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
@@ -2303,69 +2676,55 @@ export function RecordOnboarding({ onFinish }: RecordOnboardingProps) {
         toast({
           title: "Microphone access denied",
           description: "Recording will continue without audio from microphone",
-          variant: "destructive"
+          variant: "destructive",
         })
       }
-      
-      // If we have microphone access, combine the streams
-      let combinedStream: MediaStream
-      
-      if (micStream) {
-        const audioTracks = [...displayStream.getAudioTracks(), ...micStream.getAudioTracks()]
-        combinedStream = new MediaStream([
-          ...displayStream.getVideoTracks(),
-          ...audioTracks
-        ])
-      } else {
-        combinedStream = displayStream
-      }
-      
+
+      const combinedStream = micStream
+        ? new MediaStream([
+            ...displayStream.getVideoTracks(),
+            ...displayStream.getAudioTracks(),
+            ...micStream.getAudioTracks(),
+          ])
+        : displayStream
+
       mediaStreamRef.current = combinedStream
-      
-      // Set up MediaRecorder with combined stream
+
       mediaRecorderRef.current = new MediaRecorder(combinedStream, {
-        mimeType: 'video/webm;codecs=vp9,opus'
+        mimeType: "video/webm;codecs=vp9,opus",
       })
-      
-      // Event handlers for the MediaRecorder
+
       mediaRecorderRef.current.ondataavailable = (event) => {
         if (event.data.size > 0) {
           recordingChunksRef.current.push(event.data)
         }
       }
-      
+
       mediaRecorderRef.current.onstop = () => {
-        const recordingBlob = new Blob(recordingChunksRef.current, {
-          type: 'video/webm'
-        })
-        setRecordingBlob(recordingBlob)
-        
-        // Clear recording chunks for next recording
+        const blob = new Blob(recordingChunksRef.current, { type: "video/webm" })
+        setRecordingBlob(blob)
         recordingChunksRef.current = []
-        
         if (timerRef.current) {
           clearInterval(timerRef.current)
           timerRef.current = null
         }
       }
-      
-      // Start recording
-      mediaRecorderRef.current.start(1000) // 1 second chunks
+
+      mediaRecorderRef.current.start(1000)
       setIsRecording(true)
-      
-      // Start timer
+
       let seconds = 0
       timerRef.current = setInterval(() => {
         seconds++
         setRecordingTime(seconds)
       }, 1000)
-      
     } catch (err) {
       console.error("Error starting recording:", err)
       toast({
         title: "Recording failed",
-        description: "Could not access screen recording. Please check permissions and try again.",
-        variant: "destructive"
+        description:
+          "Could not access screen recording. Please check permissions and try again.",
+        variant: "destructive",
       })
     }
   }
@@ -2373,19 +2732,17 @@ export function RecordOnboarding({ onFinish }: RecordOnboardingProps) {
   const stopRecording = () => {
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop()
-      if (mediaStreamRef.current) {
-        mediaStreamRef.current.getTracks().forEach(track => track.stop())
-      }
+      mediaStreamRef.current?.getTracks().forEach((track) => track.stop())
       setIsRecording(false)
     }
   }
 
-  const uploadRecording = async () => {
+  const uploadRecordingHandler = async () => {
     if (!recordingBlob) {
       toast({
         title: "No recording to upload",
         description: "Please record your screen first.",
-        variant: "destructive"
+        variant: "destructive",
       })
       return
     }
@@ -2393,82 +2750,58 @@ export function RecordOnboarding({ onFinish }: RecordOnboardingProps) {
     setProcessingStep(true)
 
     try {
-      // Create a FormData object to send the file
-      const formData = new FormData()
-      formData.append('file', recordingBlob, `recording-${steps.length + 1}.webm`)
-      formData.append('step_index', steps.length.toString())
-      
-      // Upload to the backend
-      const response = await fetch(`http://localhost:8000/recordings/upload`, {
-        method: 'POST',
-        body: formData,
-      })
+      const { file_id } = await uploadRecording(recordingBlob, steps.length)
 
-      if (!response.ok) {
-        throw new Error(`Upload failed: ${response.statusText}`)
-      }
-
-      const data = await response.json()
-      
-      // Start polling for AI processing results
-      const fileId = data.file_id
-      
-      // Set up interval to check processing status
       const interval = setInterval(async () => {
         try {
-          const metadataResponse = await fetch(`http://localhost:8000/recordings/${fileId}/metadata`)
+          const metadataResponse = await fetch(`http://localhost:8000/recordings/${file_id}/metadata`)
           if (!metadataResponse.ok) {
             throw new Error("Failed to fetch metadata")
           }
-          
+
           const metadata = await metadataResponse.json()
-          
-          // Check if processing is complete and steps are available
+
           if (metadata.extracted_steps && metadata.extracted_steps.length > 0) {
-            // Add the extracted steps
-            const newSteps = metadata.extracted_steps.map((step: Step) => ({
+            const newSteps = metadata.extracted_steps.map((step: OnboardingStep) => ({
               ...step,
-              recordingUrl: `/recordings/${fileId}`
+              recordingUrl: `http://localhost:8000/recordings/${file_id}`,
+              _id: crypto.randomUUID() // Temporary ID for new steps
             }))
-            
-            setSteps(prevSteps => [...prevSteps, ...newSteps])
-            
-            // Clear interval and reset state
+
+            setSteps((prevSteps) => [...prevSteps, ...newSteps])
             clearInterval(interval)
             setPollingInterval(null)
             setProcessingStep(false)
             setRecordingBlob(null)
-            
+
             toast({
               title: "Processing complete",
               description: `Added ${newSteps.length} steps from your recording.`,
             })
           } else if (metadata.processing_error) {
-            // Handle processing error
             clearInterval(interval)
             setPollingInterval(null)
             setProcessingStep(false)
-            
+
             toast({
               title: "Processing failed",
               description: metadata.processing_error,
-              variant: "destructive"
+              variant: "destructive",
             })
           }
         } catch (error) {
           console.error("Error polling for metadata:", error)
         }
-      }, 3000) // Check every 3 seconds
-      
+      }, 3000)
+
       setPollingInterval(interval)
-      
     } catch (error) {
       console.error("Error uploading recording:", error)
       setProcessingStep(false)
       toast({
         title: "Upload failed",
         description: "Could not upload recording. Please try again.",
-        variant: "destructive"
+        variant: "destructive",
       })
     }
   }
@@ -2476,41 +2809,99 @@ export function RecordOnboarding({ onFinish }: RecordOnboardingProps) {
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60)
     const secs = seconds % 60
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+    return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`
   }
 
   const handleFinish = () => {
     onFinish(steps)
   }
 
+  // Handler for when the steps are reordered via drag and drop.
+  const handleReorder = async (newOrder: OnboardingStep[]) => {
+    setSteps(newOrder)
+    if (agentId) {
+      try {
+        await updateAgentSteps(agentId, newOrder)
+        toast({
+          title: "Success",
+          description: "Steps order updated successfully.",
+        })
+      } catch (error) {
+        console.error("Error updating steps order:", error)
+        toast({
+          title: "Error",
+          description: "Failed to update steps order.",
+          variant: "destructive",
+        })
+      }
+    }
+  }
+
+  // Delete step functions remain the same
+  const confirmDeleteStep = (index: number) => {
+    setStepToDelete(index)
+  }
+
+  const handleDeleteStep = async () => {
+    if (stepToDelete === null) return
+
+    const stepToRemove = steps[stepToDelete]
+    const newSteps = [...steps]
+    newSteps.splice(stepToDelete, 1)
+    setSteps(newSteps)
+
+    if (stepToRemove.recordingUrl) {
+      try {
+        await deleteRecording(stepToRemove.recordingUrl)
+      } catch (error) {
+        console.error("Error deleting recording:", error)
+      }
+    }
+
+    setStepToDelete(null)
+  }
+
+  const cancelDeleteStep = () => {
+    setStepToDelete(null)
+  }
+
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <Card className="w-full max-w-3xl bg-[#1C1C1C] border-gray-800">
+    <div className="fixed inset-0 bg-background/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <Card className="w-full max-w-3xl bg-card border-border">
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-gray-200">Record Onboarding Steps</CardTitle>
-          <Button variant="ghost" size="icon" onClick={() => onFinish([])} className="text-gray-400">
+          <CardTitle className="text-card-foreground">
+            Record Onboarding Steps
+          </CardTitle>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => onFinish([])}
+            className="text-muted-foreground"
+          >
             <X className="h-5 w-5" />
           </Button>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="bg-gray-900 rounded-lg p-4 border border-gray-700">
-            <h3 className="text-white text-lg mb-2">How to use</h3>
-            <p className="text-gray-300 mb-4">
-              Simply record your screen while narrating the onboarding steps. Our AI will automatically 
-              extract step titles and descriptions from your recording.
+          <div className="bg-card rounded-lg p-4 border border-border">
+            <h3 className="text-foreground text-lg mb-2">How to use</h3>
+            <p className="text-muted-foreground mb-4">
+              Simply record your screen while narrating the onboarding steps.
+              Our AI will automatically extract step titles and descriptions
+              from your recording.
             </p>
-            
+
             {recordingBlob ? (
               <div className="flex items-center justify-between">
-                <p className="text-gray-200 flex items-center">
+                <p className="text-card-foreground flex items-center">
                   <Video className="mr-2 h-4 w-4 text-yellow-500" />
                   Recording ready to process
                 </p>
-                <Button 
-                  variant="default" 
-                  size="sm" 
-                  onClick={uploadRecording} 
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={uploadRecordingHandler}
                   disabled={processingStep}
+                  className="bg-gradient-to-r from-primary to-secondary hover:from-primary/90 hover:to-secondary/90"
                 >
                   {processingStep ? (
                     <>
@@ -2524,8 +2915,8 @@ export function RecordOnboarding({ onFinish }: RecordOnboardingProps) {
               </div>
             ) : isRecording ? (
               <div className="flex items-center justify-between">
-                <p className="text-red-500 flex items-center">
-                  <span className="inline-block h-3 w-3 rounded-full bg-red-500 mr-2 animate-pulse"></span>
+                <p className="text-destructive flex items-center">
+                  <span className="inline-block h-3 w-3 rounded-full bg-destructive mr-2 animate-pulse"></span>
                   Recording: {formatTime(recordingTime)}
                 </p>
                 <Button variant="outline" size="sm" onClick={stopRecording}>
@@ -2535,7 +2926,7 @@ export function RecordOnboarding({ onFinish }: RecordOnboardingProps) {
               </div>
             ) : (
               <div className="flex items-center justify-between">
-                <p className="text-gray-400">No recording yet</p>
+                <p className="text-muted-foreground">No recording yet</p>
                 <Button variant="default" size="sm" onClick={startRecording}>
                   <Mic className="mr-2 h-4 w-4" />
                   Start Recording
@@ -2544,38 +2935,59 @@ export function RecordOnboarding({ onFinish }: RecordOnboardingProps) {
             )}
           </div>
 
+          {/* Reorderable list of extracted steps */}
           {steps.length > 0 && (
             <div className="space-y-4">
-              <h3 className="text-white text-lg">Extracted Steps</h3>
-              <div className="space-y-3">
+              <h3 className="text-foreground text-lg">Extracted Steps</h3>
+              <Reorder.Group
+                axis="y"
+                values={steps}
+                onReorder={handleReorder}
+                className="rounded-md bg-muted/40 p-1 space-y-1"
+              >
                 {steps.map((step, index) => (
-                  <div key={index} className="bg-gray-900 p-4 rounded-lg border border-gray-700">
-                    <h4 className="text-white font-medium text-lg">{step.title}</h4>
-                    <p className="text-gray-300 mt-1">{step.description}</p>
-                    {step.recordingUrl && (
-                      <div className="mt-3">
-                        <video 
-                          src={`http://localhost:8000${step.recordingUrl}`} 
-                          controls 
-                          className="w-full rounded"
-                        />
-                      </div>
-                    )}
-                  </div>
+                  <Reorder.Item
+                    key={step._id || index}
+                    value={step}
+                    whileDrag={{ scale: 1.05 }}
+                    className="flex items-center p-3 rounded-md transition-colors bg-card hover:bg-muted border border-border group"
+                  >
+                    {/* Grip icon as a visual drag handle */}
+                    <div className="mr-2 cursor-grab select-none">
+                      <svg className="h-5 w-5 text-muted-foreground" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 9h16M4 15h16" />
+                      </svg>
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="text-foreground font-medium">{step.title}</h4>
+                      <p className="text-muted-foreground text-sm line-clamp-1 mt-1">
+                        {step.description}
+                      </p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => confirmDeleteStep(index)}
+                      className="text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                      aria-label="Delete step"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </Reorder.Item>
                 ))}
-              </div>
+              </Reorder.Group>
             </div>
           )}
 
           <div className="flex justify-between">
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={() => onFinish([])}
               disabled={isRecording || processingStep}
             >
               Cancel
             </Button>
-            <Button 
+            <Button
               onClick={handleFinish}
               disabled={isRecording || processingStep || steps.length === 0}
             >
@@ -2584,6 +2996,14 @@ export function RecordOnboarding({ onFinish }: RecordOnboardingProps) {
           </div>
         </CardContent>
       </Card>
+
+      <DeleteConfirmation
+        isOpen={stepToDelete !== null}
+        title="Delete Onboarding Step"
+        description="Are you sure you want to delete this step? This will also remove any associated recordings and cannot be undone."
+        onConfirm={handleDeleteStep}
+        onCancel={cancelDeleteStep}
+      />
     </div>
   )
 }
@@ -2813,7 +3233,13 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 import { Label } from "@/components/ui/label"
-import { type User, type UserCreate, createUser, updateUser, deleteUser } from "@/lib/api"
+import {
+  type User,
+  type UserCreate,
+  createUser,
+  updateUser,
+  deleteUser,
+} from "@/lib/api"
 import { useUser } from "@/app/context/UserContext"
 import { toast } from "@/components/ui/use-toast"
 
@@ -2910,24 +3336,29 @@ export function UserManagement({ users, onUserChange }: UserManagementProps) {
   }
 
   return (
-    <Card className="bg-black/40 border-white/10 backdrop-blur-xl">
-      <CardHeader>
-      </CardHeader>
+    <Card className="bg-card/40 border-border/10 backdrop-blur-xl">
+      <CardHeader />
       <CardContent>
         <div className="space-y-6">
+          {/* New user form */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <Input
               placeholder="Email"
               value={newUser.email}
-              onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
-              className="bg-gray-900 border-gray-700 text-gray-200"
+              onChange={(e) =>
+                setNewUser({ ...newUser, email: e.target.value })
+              }
+              className="bg-card border-border text-card-foreground"
             />
             <select
               value={newUser.role}
               onChange={(e) =>
-                setNewUser({ ...newUser, role: e.target.value as "Employee" | "Admin" })
+                setNewUser({
+                  ...newUser,
+                  role: e.target.value as "Employee" | "Admin",
+                })
               }
-              className="bg-gray-900 border-gray-700 text-gray-200 rounded-md px-3 py-2"
+              className="bg-card border-border text-card-foreground rounded-md px-3 py-2"
             >
               <option value="Employee">Employee</option>
               <option value="Admin">Admin</option>
@@ -2936,72 +3367,87 @@ export function UserManagement({ users, onUserChange }: UserManagementProps) {
               type="password"
               placeholder="Password"
               value={newUser.password}
-              onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
-              className="bg-gray-900 border-gray-700 text-gray-200"
+              onChange={(e) =>
+                setNewUser({ ...newUser, password: e.target.value })
+              }
+              className="bg-card border-border text-card-foreground"
             />
             <Button
               onClick={addUser}
-              className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700"
+              className="bg-gradient-to-r from-primary to-secondary hover:from-primary/90 hover:to-secondary/90"
             >
               <Plus className="mr-2 h-4 w-4" /> Add User
             </Button>
           </div>
 
+          {/* Search input */}
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="Search users..."
               value={searchTerm}
               onChange={(e) => handleSearch(e.target.value)}
-              className="bg-gray-900 border-gray-700 text-gray-200 pl-10"
+              className="bg-card border-border text-card-foreground pl-10"
             />
           </div>
 
-          <div className="rounded-md border border-gray-800 overflow-hidden">
+          {/* Users table */}
+          <div className="rounded-md border border-border overflow-hidden">
             <Table>
-              <TableHeader className="bg-gray-900/50">
-                <TableRow className="hover:bg-transparent border-gray-800">
-                  <TableHead className="text-gray-400 font-medium">Email</TableHead>
-                  <TableHead className="text-gray-400 font-medium">Role</TableHead>
-                  <TableHead className="text-gray-400 font-medium text-right">
+              <TableHeader className="bg-card/50">
+                <TableRow className="hover:bg-transparent border-border">
+                  <TableHead className="text-muted-foreground font-medium">
+                    Email
+                  </TableHead>
+                  <TableHead className="text-muted-foreground font-medium">
+                    Role
+                  </TableHead>
+                  <TableHead className="text-muted-foreground font-medium text-right">
                     Actions
                   </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredUsers.map((user) => (
-                  <TableRow key={user._id} className="border-gray-800 hover:bg-gray-800/30">
-                    <TableCell className="font-medium text-gray-300">
+                  <TableRow
+                    key={user._id}
+                    className="border-border hover:bg-card/30"
+                  >
+                    <TableCell className="font-medium text-card-foreground">
                       {user.email}
                     </TableCell>
                     <TableCell>
                       <span
                         className={`px-2 py-1 rounded-full text-xs ${
                           user.role === "Admin"
-                            ? "bg-purple-500/20 text-purple-300"
-                            : "bg-blue-500/20 text-blue-300"
+                            ? "bg-secondary/20 text-secondary-foreground"
+                            : "bg-primary/20 text-primary-foreground"
                         }`}
                       >
                         {user.role}
                       </span>
                     </TableCell>
                     <TableCell className="text-right">
-                      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+                      <Dialog
+                        open={isEditDialogOpen}
+                        onOpenChange={setIsEditDialogOpen}
+                      >
                         <DialogTrigger asChild>
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="text-blue-400 hover:text-blue-300 hover:bg-blue-500/10"
+                            className="text-primary hover:text-primary/80 hover:bg-primary/10"
                             onClick={() => setEditingUser(user)}
                           >
                             <Pencil className="h-4 w-4" />
                           </Button>
                         </DialogTrigger>
-                        <DialogContent className="bg-gray-900 text-gray-200">
+                        <DialogContent className="bg-card text-card-foreground">
                           <DialogHeader>
                             <DialogTitle>Edit User</DialogTitle>
                             <DialogDescription>
-                              Make changes to the user here. Click save when you're done.
+                              Make changes to the user here. Click save when you're
+                              done.
                             </DialogDescription>
                           </DialogHeader>
                           <div className="grid gap-4 py-4">
@@ -3017,7 +3463,7 @@ export function UserManagement({ users, onUserChange }: UserManagementProps) {
                                     prev ? { ...prev, email: e.target.value } : null
                                   )
                                 }
-                                className="col-span-3 bg-gray-800 border-gray-700"
+                                className="col-span-3 bg-card border-border"
                               />
                             </div>
                             <div className="grid grid-cols-4 items-center gap-4">
@@ -3030,11 +3476,14 @@ export function UserManagement({ users, onUserChange }: UserManagementProps) {
                                 onChange={(e) =>
                                   setEditingUser((prev) =>
                                     prev
-                                      ? { ...prev, role: e.target.value as "Employee" | "Admin" }
+                                      ? {
+                                          ...prev,
+                                          role: e.target.value as "Employee" | "Admin",
+                                        }
                                       : null
                                   )
                                 }
-                                className="col-span-3 bg-gray-800 border-gray-700 rounded-md px-3 py-2"
+                                className="col-span-3 bg-card border-border rounded-md px-3 py-2"
                               >
                                 <option value="Employee">Employee</option>
                                 <option value="Admin">Admin</option>
@@ -3042,7 +3491,10 @@ export function UserManagement({ users, onUserChange }: UserManagementProps) {
                             </div>
                           </div>
                           <DialogFooter>
-                            <Button onClick={updateUserHandler} className="bg-blue-500 hover:bg-blue-600">
+                            <Button
+                              onClick={updateUserHandler}
+                              className="bg-primary hover:bg-primary/90"
+                            >
                               Save changes
                             </Button>
                           </DialogFooter>
@@ -3053,26 +3505,27 @@ export function UserManagement({ users, onUserChange }: UserManagementProps) {
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="text-red-400 hover:text-red-300 hover:bg-red-500/10 ml-1"
+                            className="text-destructive hover:text-destructive-foreground hover:bg-destructive/10 ml-1"
                           >
                             <Trash className="h-4 w-4" />
                           </Button>
                         </AlertDialogTrigger>
-                        <AlertDialogContent className="bg-gray-900 text-gray-200">
+                        <AlertDialogContent className="bg-card text-card-foreground">
                           <AlertDialogHeader>
                             <AlertDialogTitle>
                               Are you absolutely sure?
                             </AlertDialogTitle>
                             <AlertDialogDescription>
-                              This action cannot be undone. This will permanently delete the user account.
+                              This action cannot be undone. This will permanently
+                              delete the user account.
                             </AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>
-                            <AlertDialogCancel className="bg-gray-800 text-gray-200 hover:bg-gray-700">
+                            <AlertDialogCancel className="bg-card hover:bg-card/90 text-card-foreground">
                               Cancel
                             </AlertDialogCancel>
                             <AlertDialogAction
-                              className="bg-red-600 hover:bg-red-700"
+                              className="bg-destructive hover:bg-destructive/90"
                               onClick={() => deleteUserHandler(user._id)}
                             >
                               Delete
@@ -9041,11 +9494,7 @@ export interface AgentCreate {
   role: string;
   description?: string;
   emails: string[];
-  steps?: Array<{
-    title: string;
-    description: string;
-    recordingUrl?: string;
-  }>;
+  steps?: Array<OnboardingStep>;
 }
 
 export interface AgentUpdate {
@@ -9053,7 +9502,14 @@ export interface AgentUpdate {
   role?: string;
   description?: string;
   emails?: string[];
-  steps?: Array<{ title: string; description: string }>;
+  steps?: Array<OnboardingStep>;
+}
+
+export interface OnboardingStep {
+  title: string;
+  description: string;
+  recordingUrl?: string;
+  _id?: string;
 }
 
 // Set your API base URL.
@@ -9187,6 +9643,60 @@ export async function uploadRecording(
   return response.json();
 }
 
+
+export const updateAgentSteps = async (agentId: string, steps: OnboardingStep[]): Promise<any> => {
+  try {
+    const response = await fetch(`/api/agents/${agentId}/steps`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ steps }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to update steps order');
+    }
+
+    return response.json();
+  } catch (error) {
+    console.error('Error updating steps:', error);
+    throw error;
+  }
+};
+
+export const fetchAgentSteps = async (agentId: string): Promise<OnboardingStep[]> => {
+  try {
+    const response = await fetch(`/api/agents/${agentId}/steps`);
+    
+    if (!response.ok) {
+      throw new Error('Failed to fetch steps');
+    }
+    
+    return response.json();
+  } catch (error) {
+    console.error('Error fetching steps:', error);
+    return [];
+  }
+};
+
+export const deleteStep = async (agentId: string, stepId: string): Promise<boolean> => {
+  try {
+    const response = await fetch(`/api/agents/${agentId}/steps/${stepId}`, {
+      method: 'DELETE',
+    });
+    
+    if (!response.ok) {
+      throw new Error('Failed to delete step');
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Error deleting step:', error);
+    return false;
+  }
+};
+
 // GET /agents/{id}
 export async function getAgent(agentId: string): Promise<Agent> {
   const response = await fetch(`${API_BASE}/agents/${agentId}`);
@@ -9228,6 +9738,28 @@ export async function deleteAgent(agentId: string): Promise<void> {
     throw new Error(error.detail || 'Failed to delete agent');
   }
 }
+
+export const deleteRecording = async (recordingId: string): Promise<boolean> => {
+  try {
+    // Extract the recording ID from the URL if it's a full URL
+    const id = recordingId.startsWith('http://localhost:8000/recordings/') 
+      ? recordingId.split('http://localhost:8000/recordings/')[1] 
+      : recordingId;
+      
+    const response = await fetch(`http://localhost:8000/recordings/${id}`, {
+      method: 'DELETE',
+    });
+    
+    if (!response.ok) {
+      throw new Error('Failed to delete recording');
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Error deleting recording:', error);
+    return false;
+  }
+};
 
 ================
 File: lib/utils.ts
@@ -9529,94 +10061,104 @@ File: styles/globals.css
 @tailwind components;
 @tailwind utilities;
 
-body {
-  font-family: Arial, Helvetica, sans-serif;
-}
-
-@layer utilities {
-  .text-balance {
-    text-wrap: balance;
-  }
-}
-
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 0 0% 3.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 0 0% 3.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 3.9%;
-    --primary: 0 0% 9%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 0 0% 96.1%;
-    --secondary-foreground: 0 0% 9%;
-    --muted: 0 0% 96.1%;
-    --muted-foreground: 0 0% 45.1%;
-    --accent: 0 0% 96.1%;
-    --accent-foreground: 0 0% 9%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 89.8%;
-    --input: 0 0% 89.8%;
-    --ring: 0 0% 3.9%;
-    --chart-1: 12 76% 61%;
-    --chart-2: 173 58% 39%;
-    --chart-3: 197 37% 24%;
-    --chart-4: 43 74% 66%;
-    --chart-5: 27 87% 67%;
+    /* Light mode variables */
+    --background: 0, 0%, 100%; /* white */
+    --foreground: 210, 10%, 23%; /* dark gray-blue */
+    --card: 0, 0%, 100%;
+    --card-foreground: 210, 10%, 23%;
+    --popover: 0, 0%, 100%;
+    --popover-foreground: 210, 10%, 23%;
+    
+    /* Our main colors */
+    --primary: 220, 90%, 56%; /* vibrant blue */
+    --primary-foreground: 0, 0%, 100%; /* white */
+    --secondary: 275, 60%, 50%; /* rich purple */
+    --secondary-foreground: 0, 0%, 100%; /* white */
+    
+    --muted: 210, 16%, 93%;
+    --muted-foreground: 210, 16%, 40%;
+    --accent: var(--secondary);
+    --accent-foreground: var(--secondary-foreground);
+    
+    --destructive: 0, 84%, 60%; /* red-ish */
+    --destructive-foreground: 0, 0%, 100%;
+    
+    --border: 210, 16%, 80%;
+    --input: 210, 16%, 80%;
+    --ring: var(--primary);
+    
+    --chart-1: var(--primary);
+    --chart-2: var(--secondary);
+    --chart-3: 30, 80%, 55%;
+    --chart-4: 280, 65%, 60%;
+    --chart-5: 340, 75%, 55%;
+    
     --radius: 0.5rem;
-    --sidebar-background: 0 0% 98%;
-    --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 240 5.9% 10%;
-    --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 240 4.8% 95.9%;
-    --sidebar-accent-foreground: 240 5.9% 10%;
-    --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    
+    /* Sidebar (if used) */
+    --sidebar-background: 0, 0%, 100%;
+    --sidebar-foreground: 210, 10%, 23%;
+    --sidebar-primary: var(--primary);
+    --sidebar-primary-foreground: var(--primary-foreground);
+    --sidebar-accent: var(--secondary);
+    --sidebar-accent-foreground: var(--secondary-foreground);
+    --sidebar-border: 210, 16%, 80%;
+    --sidebar-ring: var(--ring);
   }
+
   .dark {
-    --background: 0 0% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 0 0% 3.9%;
-    --card-foreground: 0 0% 98%;
-    --popover: 0 0% 3.9%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 0 0% 98%;
-    --primary-foreground: 0 0% 9%;
-    --secondary: 0 0% 14.9%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 0 0% 14.9%;
-    --muted-foreground: 0 0% 63.9%;
-    --accent: 0 0% 14.9%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 14.9%;
-    --input: 0 0% 14.9%;
-    --ring: 0 0% 83.1%;
-    --chart-1: 220 70% 50%;
-    --chart-2: 160 60% 45%;
-    --chart-3: 30 80% 55%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 340 75% 55%;
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    /* Dark mode variables */
+    --background: 210, 10%, 10%; /* very dark */
+    --foreground: 210, 20%, 90%; /* light gray-blue */
+    --card: 210, 10%, 10%;
+    --card-foreground: 210, 20%, 90%;
+    --popover: 210, 10%, 10%;
+    --popover-foreground: 210, 20%, 90%;
+    
+    /* For dark mode we use lighter accent shades */
+    --primary: 220, 90%, 65%; /* lighter blue */
+    --primary-foreground: 210, 10%, 10%; /* almost black */
+    --secondary: 275, 60%, 65%; /* lighter purple */
+    --secondary-foreground: 210, 10%, 10%;
+    
+    --muted: 210, 16%, 14%;
+    --muted-foreground: 210, 16%, 70%;
+    --accent: var(--secondary);
+    --accent-foreground: var(--secondary-foreground);
+    
+    --destructive: 0, 62%, 30%;
+    --destructive-foreground: 0, 0%, 98%;
+    
+    --border: 210, 16%, 14%;
+    --input: 210, 16%, 14%;
+    --ring: var(--primary);
+    
+    --chart-1: var(--primary);
+    --chart-2: var(--secondary);
+    --chart-3: 30, 80%, 55%;
+    --chart-4: 280, 65%, 60%;
+    --chart-5: 340, 75%, 55%;
+    
+    --sidebar-background: 210, 10%, 10%;
+    --sidebar-foreground: 210, 20%, 90%;
+    --sidebar-primary: var(--primary);
+    --sidebar-primary-foreground: var(--primary-foreground);
+    --sidebar-accent: var(--secondary);
+    --sidebar-accent-foreground: var(--secondary-foreground);
+    --sidebar-border: 210, 16%, 14%;
+    --sidebar-ring: var(--ring);
   }
 }
 
 @layer base {
   * {
-    @apply border-border;
+    @apply border-[hsl(var(--border))];
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-[hsl(var(--background))] text-[hsl(var(--foreground))];
+    font-family: 'Arial', Helvetica, sans-serif;
   }
 }
 
@@ -9822,6 +10364,7 @@ File: package.json
     "cmdk": "1.0.4",
     "date-fns": "4.1.0",
     "embla-carousel-react": "8.5.1",
+    "framer-motion": "^12.4.11",
     "input-otp": "1.4.1",
     "lucide-react": "^0.454.0",
     "next": "14.2.16",
@@ -9831,6 +10374,7 @@ File: package.json
     "react-day-picker": "8.10.1",
     "react-dom": "^18",
     "react-hook-form": "^7.54.1",
+    "react-intersection-observer": "^9.16.0",
     "react-resizable-panels": "^2.1.7",
     "recharts": "2.15.0",
     "repomix": "^0.2.30",
@@ -9990,11 +10534,16 @@ const config: Config = {
   				to: {
   					height: '0'
   				}
-  			}
+  			},
+				fadeIn: {
+					'0%': { opacity: '0' },
+					'100%': { opacity: '1' },
+				},
   		},
   		animation: {
   			'accordion-down': 'accordion-down 0.2s ease-out',
-  			'accordion-up': 'accordion-up 0.2s ease-out'
+  			'accordion-up': 'accordion-up 0.2s ease-out',
+				fadeIn: 'fadeIn 300ms ease-out',
   		}
   	}
   },
