@@ -10,7 +10,7 @@ export default function AdminLayout({
   return (
     <div className="flex h-screen relative">
       {/* Background Image */}
-      <div className="absolute inset-0 z-0">
+      {/* <div className="absolute inset-0 z-0">
         <Image
           src="/background.png"
           alt="Background"
@@ -18,7 +18,7 @@ export default function AdminLayout({
           priority
           className="object-cover"
         />
-      </div>
+      </div> */}
       
       {/* Content with background overlay */}
       <div className="flex w-full h-full relative z-10">

@@ -67,8 +67,10 @@ app/
   globals.css
   layout.tsx
   page.tsx
+  providers.tsx
 components/
   admin/
+    delete-confirmation.tsx
     expanded-employee-row.tsx
     record-onboarding.tsx
     sidebar.tsx
@@ -165,80 +167,93 @@ Files
 ================
 File: app/admin/agents/[id]/edit/page.tsx
 ================
-"use client"
+"use client";
 
-import type React from "react"
-
-import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { Plus, X, GripVertical } from "lucide-react"
-import { getAgent, updateAgent, type Agent, type AgentUpdate } from "@/lib/api"
-import { toast } from "@/components/ui/use-toast"
+import type React from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { Reorder } from "framer-motion";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Plus, X, Video, Trash2, Loader2 } from "lucide-react";
+import { RecordOnboarding } from "@/components/admin/record-onboarding";
+import { DeleteConfirmation } from "@/components/admin/delete-confirmation";
+import {
+  getAgent,
+  updateAgent,
+  updateAgentSteps,
+  deleteStep,
+  type Agent,
+  type AgentUpdate,
+  type OnboardingStep,
+} from "@/lib/api";
+import { toast } from "@/components/ui/use-toast";
 
 export default function EditAgent({ params }: { params: { id: string } }) {
-  const [agent, setAgent] = useState<Agent | null>(null)
-  const [name, setName] = useState("")
-  const [role, setRole] = useState("")
-  const [description, setDescription] = useState("")
-  const [emails, setEmails] = useState<string[]>([])
-  const [newEmail, setNewEmail] = useState("")
-  const [steps, setSteps] = useState<Array<{ title: string; description: string }>>([])
-  const [newStep, setNewStep] = useState({ title: "", description: "" })
-  const router = useRouter()
+  const [agent, setAgent] = useState<Agent | null>(null);
+  const [name, setName] = useState("");
+  const [role, setRole] = useState("");
+  const [description, setDescription] = useState("");
+  const [emails, setEmails] = useState<string[]>([]);
+  const [newEmail, setNewEmail] = useState("");
+  const [steps, setSteps] = useState<OnboardingStep[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [stepToDelete, setStepToDelete] = useState<number | null>(null);
+  const router = useRouter();
 
   useEffect(() => {
-    fetchAgent()
-  }, [])
+    fetchAgent();
+  }, []);
 
   const fetchAgent = async () => {
     try {
-      const fetchedAgent = await getAgent(params.id)
-      setAgent(fetchedAgent)
-      setName(fetchedAgent.name)
-      setRole(fetchedAgent.role)
-      setDescription(fetchedAgent.description || "")
-      setEmails(fetchedAgent.emails || [])
-      setSteps(fetchedAgent.steps || [])
+      const fetchedAgent = await getAgent(params.id);
+      setAgent(fetchedAgent);
+      setName(fetchedAgent.name);
+      setRole(fetchedAgent.role);
+      setDescription(fetchedAgent.description || "");
+      setEmails(fetchedAgent.emails || []);
+      // Ensure each step has an _id
+      const formattedSteps = (fetchedAgent.steps || []).map((step: any) => ({
+        ...step,
+        _id: step._id || `step-${Math.random().toString(36).substring(2, 11)}`,
+      }));
+      setSteps(formattedSteps);
     } catch (error) {
-      console.error("Failed to fetch agent:", error)
+      console.error("Failed to fetch agent:", error);
       toast({
         title: "Error",
         description: "Failed to load agent details. Please try again.",
         variant: "destructive",
-      })
+      });
     }
-  }
+  };
 
   const addEmail = (e: React.FormEvent) => {
-    e.preventDefault()
+    e.preventDefault();
     if (newEmail && !emails.includes(newEmail)) {
-      setEmails([...emails, newEmail])
-      setNewEmail("")
+      setEmails([...emails, newEmail]);
+      setNewEmail("");
     }
-  }
+  };
 
   const removeEmail = (email: string) => {
-    setEmails(emails.filter((e) => e !== email))
-  }
-
-  const addStep = () => {
-    if (newStep.title) {
-      setSteps([...steps, newStep])
-      setNewStep({ title: "", description: "" })
-    }
-  }
-
-  const removeStep = (index: number) => {
-    setSteps(steps.filter((_, i) => i !== index))
-  }
+    setEmails(emails.filter((e) => e !== email));
+  };
 
   const handleUpdate = async () => {
-    if (!agent) return
+    if (!agent) return;
+    setIsLoading(true);
 
     const updatedAgent: AgentUpdate = {
       name,
@@ -246,174 +261,300 @@ export default function EditAgent({ params }: { params: { id: string } }) {
       description,
       emails,
       steps,
-    }
+    };
 
     try {
-      await updateAgent(agent._id, updatedAgent)
+      await updateAgent(agent._id, updatedAgent);
       toast({
         title: "Success",
         description: "Agent updated successfully.",
-      })
-      router.push(`/admin/agents/${agent._id}`)
+      });
+      router.push(`/admin/agents/${agent._id}`);
     } catch (error) {
-      console.error("Failed to update agent:", error)
+      console.error("Failed to update agent:", error);
       toast({
         title: "Error",
         description: "Failed to update agent. Please try again.",
         variant: "destructive",
-      })
+      });
+    } finally {
+      setIsLoading(false);
     }
-  }
+  };
 
-  if (!agent) return <div>Loading...</div>
+  const handleStartRecording = () => {
+    setIsRecording(true);
+  };
+
+  const handleFinishRecording = (newSteps: OnboardingStep[]) => {
+    setIsRecording(false);
+    // Merge the new steps with the existing steps and update DB
+    setSteps((prevSteps) => {
+      const combined = [...prevSteps, ...newSteps];
+      if (agent?._id) {
+        updateStepsInDatabase(combined);
+      }
+      return combined;
+    });
+  };
+
+  const updateStepsInDatabase = async (stepsToUpdate: OnboardingStep[]) => {
+    if (!agent?._id) return;
+    try {
+      await updateAgentSteps(agent._id, stepsToUpdate);
+      toast({
+        title: "Success",
+        description: "Onboarding steps updated successfully.",
+      });
+    } catch (error) {
+      console.error("Error updating steps:", error);
+    }
+  };
+
+  // Handler for reordering steps via drag and drop
+  const handleReorder = async (newOrder: OnboardingStep[]) => {
+    setSteps(newOrder);
+    if (agent?._id) {
+      updateStepsInDatabase(newOrder);
+    }
+  };
+
+  // Delete step handlers
+  const confirmDeleteStep = (index: number) => {
+    setStepToDelete(index);
+  };
+
+  const handleDeleteStep = async () => {
+    if (stepToDelete === null || !agent) return;
+
+    const stepToRemove = steps[stepToDelete];
+    const newSteps = [...steps];
+    newSteps.splice(stepToDelete, 1);
+    setSteps(newSteps);
+
+    if (stepToRemove._id) {
+      try {
+        await deleteStep(agent._id, stepToRemove._id);
+        toast({
+          title: "Success",
+          description: "Step deleted successfully.",
+        });
+      } catch (error) {
+        console.error("Error deleting step:", error);
+        // Revert deletion on error
+        setSteps(steps);
+        toast({
+          title: "Error",
+          description: "Failed to delete step. Please try again.",
+          variant: "destructive",
+        });
+      }
+    }
+    setStepToDelete(null);
+  };
+
+  const cancelDeleteStep = () => {
+    setStepToDelete(null);
+  };
+
+  if (!agent)
+    return (
+      <div className="p-6 flex justify-center items-center">
+        <Loader2 className="h-6 w-6 animate-spin mr-2" />
+        <span>Loading agent details...</span>
+      </div>
+    );
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
-      <h1 className="text-2xl font-semibold mb-6 text-gray-200">Edit Agent</h1>
-      <Card className="bg-[#1C1C1C] border-gray-800">
+      <h1 className="text-2xl font-semibold mb-6 text-foreground">
+        Edit Agent
+      </h1>
+      <Card className="bg-card border border-border">
         <CardHeader>
-          <CardTitle className="text-gray-200">Agent Details</CardTitle>
-          <CardDescription>Modify your onboarding agent configuration</CardDescription>
+          <CardTitle className="text-foreground">Agent Details</CardTitle>
+          <CardDescription>
+            Modify your onboarding agent configuration
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="grid gap-2">
-            <Label htmlFor="name" className="text-gray-300">
-              Agent Name
-            </Label>
-            <Input
-              id="name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="bg-gray-900 border-gray-700 text-gray-200"
-            />
-          </div>
-
-          <div className="grid gap-2">
-            <Label htmlFor="role" className="text-gray-300">
-              Role
-            </Label>
-            <Input
-              id="role"
-              value={role}
-              onChange={(e) => setRole(e.target.value)}
-              className="bg-gray-900 border-gray-700 text-gray-200"
-            />
-          </div>
-
-          <div className="grid gap-2">
-            <Label htmlFor="description" className="text-gray-300">
-              Description
-            </Label>
-            <Textarea
-              id="description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className="bg-gray-900 border-gray-700 text-gray-200"
-            />
-          </div>
-
-          <div className="grid gap-2">
-            <Label className="text-gray-300">Authorized Employees</Label>
-            <form onSubmit={addEmail} className="flex gap-2">
+          {/* Agent Information */}
+          <div className="space-y-6">
+            <div className="grid gap-2">
+              <Label htmlFor="name" className="text-muted-foreground">
+                Agent Name
+              </Label>
               <Input
-                type="email"
-                placeholder="Add employee email"
-                value={newEmail}
-                onChange={(e) => setNewEmail(e.target.value)}
-                className="bg-gray-900 border-gray-700 text-gray-200"
+                id="name"
+                placeholder="Enter agent name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="bg-input border-input text-foreground"
               />
-              <Button type="submit">
-                <Plus size={16} className="mr-2" />
-                Add
-              </Button>
-            </form>
-            <div className="flex flex-wrap gap-2 mt-2">
-              {emails.map((email) => (
-                <div key={email} className="flex items-center gap-2 bg-gray-800 text-gray-200 px-3 py-1 rounded-full">
-                  {email}
-                  <button onClick={() => removeEmail(email)} className="text-gray-400 hover:text-gray-200">
-                    <X size={14} />
-                  </button>
-                </div>
-              ))}
             </div>
-          </div>
 
-          <div className="grid gap-2">
-            <Label className="text-gray-300">Onboarding Steps</Label>
-            <div className="space-y-4">
-              {steps.map((step, index) => (
-                <Card key={index} className="bg-gray-900 border-gray-700">
-                  <CardContent className="flex items-start gap-4 p-4">
-                    <GripVertical className="text-gray-500 mt-1" size={20} />
-                    <div className="flex-1">
-                      <Input
-                        value={step.title}
-                        onChange={(e) => {
-                          const newSteps = [...steps]
-                          newSteps[index].title = e.target.value
-                          setSteps(newSteps)
-                        }}
-                        className="bg-gray-800 border-gray-600 text-gray-200 mb-2"
-                        placeholder="Step title"
-                      />
-                      <Textarea
-                        value={step.description}
-                        onChange={(e) => {
-                          const newSteps = [...steps]
-                          newSteps[index].description = e.target.value
-                          setSteps(newSteps)
-                        }}
-                        className="bg-gray-800 border-gray-600 text-gray-200"
-                        placeholder="Step description"
-                      />
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => removeStep(index)}
-                      className="text-gray-400 hover:text-gray-200"
+            <div className="grid gap-2">
+              <Label htmlFor="role" className="text-muted-foreground">
+                Role
+              </Label>
+              <Input
+                id="role"
+                placeholder="Enter agent role"
+                value={role}
+                onChange={(e) => setRole(e.target.value)}
+                className="bg-input border-input text-foreground"
+              />
+            </div>
+
+            <div className="grid gap-2">
+              <Label htmlFor="description" className="text-muted-foreground">
+                Description
+              </Label>
+              <Textarea
+                id="description"
+                placeholder="Enter agent description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                className="bg-input border-input text-foreground"
+              />
+            </div>
+
+            {/* Authorized Employee Emails */}
+            <div className="grid gap-2">
+              <Label className="text-muted-foreground">Authorized Employees</Label>
+              <form onSubmit={addEmail} className="flex gap-2">
+                <Input
+                  type="email"
+                  placeholder="Add employee email"
+                  value={newEmail}
+                  onChange={(e) => setNewEmail(e.target.value)}
+                  className="bg-input border-input text-foreground"
+                />
+                <Button type="submit">
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add
+                </Button>
+              </form>
+              {emails.length > 0 && (
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {emails.map((email) => (
+                    <div
+                      key={email}
+                      className="flex items-center gap-2 bg-card text-foreground px-3 py-1 rounded-full"
                     >
-                      <X size={16} />
-                    </Button>
-                  </CardContent>
-                </Card>
-              ))}
-              <Card className="bg-gray-900 border-gray-700 border-dashed">
-                <CardContent className="p-4">
-                  <div className="space-y-2">
-                    <Input
-                      value={newStep.title}
-                      onChange={(e) => setNewStep({ ...newStep, title: e.target.value })}
-                      className="bg-gray-800 border-gray-600 text-gray-200"
-                      placeholder="New step title"
-                    />
-                    <Textarea
-                      value={newStep.description}
-                      onChange={(e) => setNewStep({ ...newStep, description: e.target.value })}
-                      className="bg-gray-800 border-gray-600 text-gray-200"
-                      placeholder="New step description"
-                    />
-                    <Button onClick={addStep} className="w-full">
-                      <Plus size={16} className="mr-2" />
-                      Add Step
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
+                      {email}
+                      <button
+                        onClick={() => removeEmail(email)}
+                        className="text-muted-foreground hover:text-foreground"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Onboarding Steps */}
+            <div className="grid gap-2">
+              <Label className="text-muted-foreground">Onboarding Steps</Label>
+              {steps.length > 0 ? (
+                // Wrap the reorderable list in a scrollable container
+                <div className="max-h-96 overflow-y-auto">
+                  <Reorder.Group
+                    axis="y"
+                    values={steps}
+                    onReorder={handleReorder}
+                    className="rounded-md bg-muted/40 p-1 space-y-1"
+                  >
+                    {steps.map((step, index) => (
+                      <Reorder.Item
+                        key={step._id || `step-${index}`}
+                        value={step}
+                        whileDrag={{ scale: 1.02 }}
+                        className="flex items-center p-3 rounded-md transition-colors bg-card hover:bg-muted border border-border group"
+                      >
+                        {/* Grip icon as a visual drag handle */}
+                        <div className="mr-2 cursor-grab select-none">
+                          <svg
+                            className="h-5 w-5 text-muted-foreground"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth={2}
+                            viewBox="0 0 24 24"
+                          >
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M4 9h16M4 15h16" />
+                          </svg>
+                        </div>
+                        <div className="flex-1">
+                          <h3 className="font-semibold text-foreground truncate">
+                            {step.title}
+                          </h3>
+                          <p className="text-muted-foreground text-sm line-clamp-1 mt-1">
+                            {step.description}
+                          </p>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => confirmDeleteStep(index)}
+                          className="text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                          aria-label="Delete step"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </Reorder.Item>
+                    ))}
+                  </Reorder.Group>
+                </div>
+              ) : (
+                <p className="text-muted-foreground">
+                  No onboarding steps recorded yet.
+                </p>
+              )}
+              <Button variant="outline" onClick={handleStartRecording} className="mt-2">
+                <Video className="mr-2 h-4 w-4" />
+                Record Onboarding
+              </Button>
             </div>
           </div>
 
+          {/* Action Buttons */}
           <div className="flex justify-end gap-3 mt-6">
-            <Button variant="outline" onClick={() => router.push(`/admin/agents/${agent._id}`)}>
+            <Button
+              variant="outline"
+              onClick={() => router.push(`/admin/agents/${agent._id}`)}
+              disabled={isLoading}
+            >
               Cancel
             </Button>
-            <Button onClick={handleUpdate}>Save Changes</Button>
+            <Button onClick={handleUpdate} disabled={isLoading}>
+              {isLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                "Save Changes"
+              )}
+            </Button>
           </div>
         </CardContent>
       </Card>
+
+      {isRecording && (
+        <RecordOnboarding onFinish={handleFinishRecording} agentId={agent._id} />
+      )}
+
+      <DeleteConfirmation
+        isOpen={stepToDelete !== null}
+        title="Delete Onboarding Step"
+        description="Are you sure you want to delete this step? This action cannot be undone."
+        onConfirm={handleDeleteStep}
+        onCancel={cancelDeleteStep}
+      />
     </div>
-  )
+  );
 }
 
 ================
@@ -465,10 +606,10 @@ export default function AgentPage({ params }: { params: { id: string } }) {
   if (!agent) return <div>Agent not found</div>
 
   return (
-    <div className="p-6 text-gray-200">
+    <div className="p-6 text-card-foreground">
       <div className="mb-8">
         <h1 className="text-2xl font-semibold mb-1">{agent.name}</h1>
-        <div className="flex items-center gap-6 text-sm text-gray-400">
+        <div className="flex items-center gap-6 text-sm text-muted-foreground">
           <div className="flex items-center gap-2">
             <span className="w-6 h-6 rounded-full bg-gray-700" />
             <span>Role: {agent.role}</span>
@@ -489,14 +630,14 @@ export default function AgentPage({ params }: { params: { id: string } }) {
       </div>
 
       <div className="mb-6">
-        <div className="flex border-b border-gray-800">
+        <div className="flex border-b border-border">
           {["Activity", "Workflow", "Settings"].map((tab) => (
             <button
               key={tab}
               className={`px-4 py-2 font-medium ${
                 activeTab.toLowerCase() === tab.toLowerCase()
-                  ? "text-blue-500 border-b-2 border-blue-500"
-                  : "text-gray-400 hover:text-gray-200"
+                  ? "text-primary border-b-2 border-primary"
+                  : "text-muted-foreground hover:text-card-foreground"
               }`}
               onClick={() => setActiveTab(tab.toLowerCase())}
             >
@@ -507,10 +648,10 @@ export default function AgentPage({ params }: { params: { id: string } }) {
       </div>
 
       {activeTab === "activity" && (
-        <Card className="bg-[#1C1C1C] border-gray-800">
+        <Card className="bg-card border-border">
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
-              <CardTitle className="text-gray-200">Recent Activity</CardTitle>
+              <CardTitle className="text-card-foreground">Recent Activity</CardTitle>
               <CardDescription>View recent onboarding sessions and employee progress</CardDescription>
             </div>
             <Button variant="ghost" size="icon">
@@ -520,12 +661,12 @@ export default function AgentPage({ params }: { params: { id: string } }) {
           <CardContent>
             <Table>
               <TableHeader>
-                <TableRow className="border-gray-800">
-                  <TableHead className="text-gray-400">Employee</TableHead>
-                  <TableHead className="text-gray-400">Email</TableHead>
-                  <TableHead className="text-gray-400">Progress</TableHead>
-                  <TableHead className="text-gray-400">Status</TableHead>
-                  <TableHead className="text-gray-400"></TableHead>
+                <TableRow className="border-border">
+                  <TableHead className="text-muted-foreground">Employee</TableHead>
+                  <TableHead className="text-muted-foreground">Email</TableHead>
+                  <TableHead className="text-muted-foreground">Progress</TableHead>
+                  <TableHead className="text-muted-foreground">Status</TableHead>
+                  <TableHead className="text-muted-foreground"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -533,12 +674,12 @@ export default function AgentPage({ params }: { params: { id: string } }) {
                   <>
                     <TableRow
                       key={i}
-                      className="border-gray-800 cursor-pointer hover:bg-gray-800/50"
+                      className="border-border cursor-pointer hover:bg-gray-800/50"
                       onClick={() => toggleRowExpansion(email)}
                     >
                       <TableCell className="text-gray-300">{email.split("@")[0]}</TableCell>
-                      <TableCell className="text-gray-400">{email}</TableCell>
-                      <TableCell className="text-gray-400">In Progress</TableCell>
+                      <TableCell className="text-muted-foreground">{email}</TableCell>
+                      <TableCell className="text-muted-foreground">In Progress</TableCell>
                       <TableCell className="text-gray-300">Active</TableCell>
                       <TableCell>
                         <Button variant="ghost" size="icon">
@@ -573,9 +714,9 @@ export default function AgentPage({ params }: { params: { id: string } }) {
       )}
 
       {activeTab === "workflow" && (
-        <Card className="bg-[#1C1C1C] border-gray-800">
+        <Card className="bg-card border-border">
           <CardHeader>
-            <CardTitle className="text-gray-200">Workflow</CardTitle>
+            <CardTitle className="text-card-foreground">Workflow</CardTitle>
             <CardDescription>Manage the onboarding workflow for this agent</CardDescription>
           </CardHeader>
           <CardContent>
@@ -591,13 +732,13 @@ export default function AgentPage({ params }: { params: { id: string } }) {
       )}
 
       {activeTab === "settings" && (
-        <Card className="bg-[#1C1C1C] border-gray-800">
+        <Card className="bg-card border-border">
           <CardHeader>
-            <CardTitle className="text-gray-200">Settings</CardTitle>
+            <CardTitle className="text-card-foreground">Settings</CardTitle>
             <CardDescription>Configure agent settings</CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="text-gray-400">{agent.description}</p>
+            <p className="text-muted-foreground">{agent.description}</p>
           </CardContent>
         </Card>
       )}
@@ -608,22 +749,34 @@ export default function AgentPage({ params }: { params: { id: string } }) {
 ================
 File: app/admin/create/page.tsx
 ================
-// app/admin/create/page.tsx
 "use client"
 
 import type React from "react"
-
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
+import { Reorder } from "framer-motion"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Plus, X, Video } from "lucide-react"
+import { Plus, X, Video, Trash2, Loader2 } from "lucide-react"
 import { RecordOnboarding } from "@/components/admin/record-onboarding"
+import { DeleteConfirmation } from "@/components/admin/delete-confirmation"
 import { useUser } from "@/app/context/UserContext"
-import { createAgent, type AgentCreate } from "@/lib/api"
+import {
+  createAgent,
+  updateAgentSteps,
+  deleteStep,
+  type AgentCreate,
+  type OnboardingStep
+} from "@/lib/api"
 import { toast } from "@/components/ui/use-toast"
 
 export default function CreateAgent() {
@@ -635,7 +788,19 @@ export default function CreateAgent() {
   const [emails, setEmails] = useState<string[]>([])
   const [newEmail, setNewEmail] = useState("")
   const [isRecording, setIsRecording] = useState(false)
-  const [recordedSteps, setRecordedSteps] = useState<Array<{ title: string; description: string }>>([])
+  const [recordedSteps, setRecordedSteps] = useState<OnboardingStep[]>([])
+  const [isLoading, setIsLoading] = useState(false)
+  const [stepToDelete, setStepToDelete] = useState<number | null>(null)
+  const [agentId, setAgentId] = useState<string | null>(null)
+
+  useEffect(() => {
+    // If we have an agentId from URL, we're in edit mode and should fetch the steps
+    const id = new URLSearchParams(window.location.search).get('id')
+    if (id) {
+      setAgentId(id)
+      // You'd also fetch other agent details here
+    }
+  }, [])
 
   const addEmail = (e: React.FormEvent) => {
     e.preventDefault()
@@ -653,9 +818,32 @@ export default function CreateAgent() {
     setIsRecording(true)
   }
 
-  const handleFinishRecording = (steps: Array<{ title: string; description: string }>) => {
+  const handleFinishRecording = (
+    steps: OnboardingStep[]
+  ) => {
     setIsRecording(false)
-    setRecordedSteps(steps)
+    
+    // Merge new steps with existing ones
+    setRecordedSteps(prevSteps => [...prevSteps, ...steps])
+    
+    // If we already have an agentId (edit mode), update the steps in the database
+    if (agentId) {
+      updateStepsInDatabase([...recordedSteps, ...steps])
+    }
+  }
+  
+  const updateStepsInDatabase = async (steps: OnboardingStep[]) => {
+    if (!agentId) return
+    
+    try {
+      await updateAgentSteps(agentId, steps)
+      toast({
+        title: "Success",
+        description: "Onboarding steps updated successfully.",
+      })
+    } catch (error) {
+      console.error("Error updating steps:", error)
+    }
   }
 
   const handleCreateAgent = async () => {
@@ -668,20 +856,28 @@ export default function CreateAgent() {
       return
     }
 
-    const newAgent: AgentCreate = {
-      name,
-      role,
-      description,
-      emails,
-      steps: recordedSteps,
-    }
+    setIsLoading(true)
 
     try {
-      await createAgent(newAgent)
+      const newAgent: AgentCreate = {
+        name,
+        role,
+        description,
+        emails,
+        steps: recordedSteps,
+      }
+
+      const result = await createAgent(newAgent)
       toast({
         title: "Success",
         description: "Agent created successfully.",
       })
+      
+      // Update the agentId if it's a new agent
+      if (!agentId && result.id) {
+        setAgentId(result.id)
+      }
+      
       router.push("/admin")
     } catch (error) {
       toast({
@@ -689,29 +885,253 @@ export default function CreateAgent() {
         description: "Failed to create agent. Please try again.",
         variant: "destructive",
       })
+    } finally {
+      setIsLoading(false)
     }
+  }
+
+  // Reorder handler for Framer Motion
+  const handleReorder = async (newOrder: OnboardingStep[]) => {
+    setRecordedSteps(newOrder)
+    
+    // If we have an agentId, update the steps in the database
+    if (agentId) {
+      updateStepsInDatabase(newOrder)
+    }
+  }
+
+  // Delete step functions
+  const confirmDeleteStep = (index: number) => {
+    setStepToDelete(index)
+  }
+
+  const handleDeleteStep = async () => {
+    if (stepToDelete === null) return
+    
+    const stepToRemove = recordedSteps[stepToDelete]
+    
+    // Remove the step locally first for better UX
+    const newSteps = [...recordedSteps]
+    newSteps.splice(stepToDelete, 1)
+    setRecordedSteps(newSteps)
+    
+    // If we have an agentId and the step has an id, delete it from the database
+    if (agentId && stepToRemove._id) {
+      try {
+        await deleteStep(agentId, stepToRemove._id)
+        toast({
+          title: "Success",
+          description: "Step deleted successfully.",
+        })
+      } catch (error) {
+        console.error("Error deleting step:", error)
+        
+        // Put the step back if deletion failed
+        setRecordedSteps(recordedSteps)
+        
+        toast({
+          title: "Error",
+          description: "Failed to delete step. Please try again.",
+          variant: "destructive",
+        })
+      }
+    }
+    
+    // Reset the delete dialog
+    setStepToDelete(null)
+  }
+
+  const cancelDeleteStep = () => {
+    setStepToDelete(null)
   }
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
-      <h1 className="text-2xl font-semibold mb-6 text-gray-200">Create New Agent</h1>
-      <Card className="bg-[#1C1C1C] border-gray-800">
+      <h1 className="text-2xl font-semibold mb-6 text-foreground">
+        {agentId ? "Edit Agent" : "Create New Agent"}
+      </h1>
+      <Card className="bg-card border border-border">
         <CardHeader>
-          <CardTitle className="text-gray-200">Agent Details</CardTitle>
-          <CardDescription>Configure your new onboarding agent</CardDescription>
+          <CardTitle className="text-foreground">Agent Details</CardTitle>
+          <CardDescription>
+            Configure your {agentId ? "" : "new"} onboarding agent
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* ... form fields for name, role, description, emails, and recording workflow ... */}
+          <div className="space-y-6">
+            {/* Agent Name */}
+            <div className="grid gap-2">
+              <Label htmlFor="agentName" className="text-muted-foreground">
+                Agent Name
+              </Label>
+              <Input
+                id="agentName"
+                placeholder="Enter agent name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="bg-input border-input text-foreground"
+              />
+            </div>
+            {/* Agent Role */}
+            <div className="grid gap-2">
+              <Label htmlFor="agentRole" className="text-muted-foreground">
+                Role
+              </Label>
+              <Input
+                id="agentRole"
+                placeholder="Enter agent role"
+                value={role}
+                onChange={(e) => setRole(e.target.value)}
+                className="bg-input border-input text-foreground"
+              />
+            </div>
+            {/* Agent Description */}
+            <div className="grid gap-2">
+              <Label htmlFor="agentDescription" className="text-muted-foreground">
+                Description
+              </Label>
+              <Textarea
+                id="agentDescription"
+                placeholder="Enter agent description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                className="bg-input border-input text-foreground"
+              />
+            </div>
+            {/* Authorized Employee Emails */}
+            <div className="grid gap-2">
+              <Label className="text-muted-foreground">
+                Authorized Employee Emails
+              </Label>
+              <form onSubmit={addEmail} className="flex gap-2">
+                <Input
+                  type="email"
+                  placeholder="Enter employee email"
+                  value={newEmail}
+                  onChange={(e) => setNewEmail(e.target.value)}
+                  className="bg-input border-input text-foreground"
+                />
+                <Button type="submit">
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add
+                </Button>
+              </form>
+              {emails.length > 0 && (
+                <ul className="mt-2 space-y-2">
+                  {emails.map((email, index) => (
+                    <li
+                      key={index}
+                      className="flex items-center justify-between bg-card p-2 rounded"
+                    >
+                      <span className="text-foreground">{email}</span>
+                      <button
+                        onClick={() => removeEmail(email)}
+                        className="text-muted-foreground hover:text-foreground"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            {/* Onboarding Steps */}
+            <div className="grid gap-2">
+              <Label className="text-muted-foreground">Onboarding Steps</Label>
+              
+              {recordedSteps.length > 0 ? (
+                <Reorder.Group
+                  axis="y"
+                  values={recordedSteps}
+                  onReorder={handleReorder}
+                  className="rounded-md bg-muted/40 p-1 space-y-1"
+                >
+                  {recordedSteps.map((step, index) => (
+                    <Reorder.Item
+                      key={step._id || `step-${index}-${Date.now()}`}
+                      value={step}
+                      whileDrag={{ scale: 1.02 }}
+                      className="flex items-center p-3 rounded-md transition-colors bg-card hover:bg-muted border border-border group"
+                    >
+                      {/* Grip icon as a visual drag handle */}
+                      <div className="mr-2 cursor-grab select-none">
+                        <svg className="h-5 w-5 text-muted-foreground" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M4 9h16M4 15h16" />
+                        </svg>
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="font-semibold text-foreground truncate">
+                          {step.title}
+                        </h3>
+                        <p className="text-muted-foreground text-sm line-clamp-1">
+                          {step.description}
+                        </p>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => confirmDeleteStep(index)}
+                        className="text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                        aria-label="Delete step"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </Reorder.Item>
+                  ))}
+                </Reorder.Group>
+              ) : (
+                <p className="text-muted-foreground">
+                  No onboarding steps recorded yet.
+                </p>
+              )}
+              <Button
+                variant="outline"
+                onClick={handleStartRecording}
+                className="mt-2"
+              >
+                <Video className="mr-2 h-4 w-4" />
+                Record Onboarding
+              </Button>
+            </div>
+          </div>
+
           <div className="flex justify-end gap-3 mt-6">
-            <Button variant="outline" onClick={() => router.push("/admin")}>
+            <Button 
+              variant="outline" 
+              onClick={() => router.push("/admin")}
+              disabled={isLoading}
+            >
               Cancel
             </Button>
-            <Button onClick={handleCreateAgent}>Create Agent</Button>
+            <Button 
+              onClick={handleCreateAgent}
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  {agentId ? "Updating..." : "Creating..."}
+                </>
+              ) : (
+                agentId ? "Update Agent" : "Create Agent"
+              )}
+            </Button>
           </div>
         </CardContent>
       </Card>
 
-      {isRecording && <RecordOnboarding onFinish={handleFinishRecording} />}
+      {isRecording && (
+        <RecordOnboarding onFinish={handleFinishRecording} agentId={agentId || undefined} />
+      )}
+      
+      {/* Delete confirmation dialog */}
+      <DeleteConfirmation
+        isOpen={stepToDelete !== null}
+        title="Delete Onboarding Step"
+        description="Are you sure you want to delete this step? This action cannot be undone."
+        onConfirm={handleDeleteStep}
+        onCancel={cancelDeleteStep}
+      />
     </div>
   )
 }
@@ -719,7 +1139,6 @@ export default function CreateAgent() {
 ================
 File: app/admin/users/page.tsx
 ================
-// app/admin/users/page.tsx
 "use client"
 
 import { useQuery } from "@tanstack/react-query"
@@ -754,8 +1173,10 @@ export default function UsersPage() {
   return (
     <div className="p-6">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-white">User Management</h1>
-        <p className="text-gray-400">Add, edit, or remove users</p>
+        <h1 className="text-2xl font-bold text-foreground">User Management</h1>
+        <p className="text-muted-foreground">
+          Add, edit, or remove users
+        </p>
       </div>
 
       <UserManagement users={users || []} onUserChange={refetch} />
@@ -778,7 +1199,7 @@ export default function AdminLayout({
   return (
     <div className="flex h-screen relative">
       {/* Background Image */}
-      <div className="absolute inset-0 z-0">
+      {/* <div className="absolute inset-0 z-0">
         <Image
           src="/background.png"
           alt="Background"
@@ -786,7 +1207,7 @@ export default function AdminLayout({
           priority
           className="object-cover"
         />
-      </div>
+      </div> */}
       
       {/* Content with background overlay */}
       <div className="flex w-full h-full relative z-10">
@@ -800,12 +1221,17 @@ export default function AdminLayout({
 ================
 File: app/admin/page.tsx
 ================
-// app/admin/page.tsx
 "use client"
 
 import { useQuery } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
 import { ArrowUpRight, Users, Activity, CheckCircle } from "lucide-react"
 import { useUser } from "../context/UserContext"
 import { getAgents } from "@/lib/api"
@@ -821,42 +1247,78 @@ export default function AdminDashboard() {
   return (
     <div className="min-h-screen">
       <div className="p-6">
+        {/* Header */}
         <div className="mb-8">
-          <h1 className="text-2xl font-bold text-white">Dashboard</h1>
-          <p className="text-gray-400">Welcome back, {user?.email}</p>
+          <h1 className="text-2xl font-bold text-foreground">
+            Dashboard
+          </h1>
+          <p className="text-muted-foreground">
+            Welcome back, {user?.email}
+          </p>
         </div>
 
+        {/* Stat Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           {[
-            { title: "Active Onboardings", value: agents?.length.toString() || "0", change: "+2", icon: Users },
-            { title: "Completion Rate", value: "85%", change: "+5%", icon: Activity },
-            { title: "Completed Today", value: "8", change: "+3", icon: CheckCircle },
+            {
+              title: "Active Onboardings",
+              value: agents?.length.toString() || "0",
+              change: "+2",
+              icon: Users,
+            },
+            {
+              title: "Completion Rate",
+              value: "85%",
+              change: "+5%",
+              icon: Activity,
+            },
+            {
+              title: "Completed Today",
+              value: "8",
+              change: "+3",
+              icon: CheckCircle,
+            },
           ].map((stat, index) => (
-            <Card key={index} className="bg-black/40 border-white/10 backdrop-blur-xl">
+            <Card
+              key={index}
+              className="bg-card/40 border border-border backdrop-blur-xl"
+            >
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-gray-400">{stat.title}</p>
+                    <p className="text-sm font-medium text-muted-foreground">
+                      {stat.title}
+                    </p>
                     <div className="flex items-baseline gap-2">
-                      <p className="text-2xl font-bold text-white">{stat.value}</p>
-                      <span className="text-sm text-green-400">{stat.change}</span>
+                      <p className="text-2xl font-bold text-foreground">
+                        {stat.value}
+                      </p>
+                      <span className="text-sm text-green-500">
+                        {stat.change}
+                      </span>
                     </div>
                   </div>
-                  <stat.icon className="h-5 w-5 text-gray-400" />
+                  <stat.icon className="h-5 w-5 text-muted-foreground" />
                 </div>
               </CardContent>
             </Card>
           ))}
         </div>
 
+        {/* Recent Activity and Active Agents */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <Card className="bg-black/40 border-white/10 backdrop-blur-xl">
+          {/* Recent Activity */}
+          <Card className="bg-card/40 border border-border backdrop-blur-xl">
             <CardHeader className="flex flex-row items-center justify-between">
               <div>
-                <CardTitle className="text-white">Recent Activity</CardTitle>
-                <CardDescription>Latest onboarding sessions</CardDescription>
+                <CardTitle className="text-foreground">
+                  Recent Activity
+                </CardTitle>
+                <CardDescription className="text-muted-foreground">
+                  Latest onboarding sessions
+                </CardDescription>
               </div>
-              <Button variant="ghost" size="icon" className="text-gray-400">
+              <Button variant="ghost" size="icon" className="text-muted-foreground">
                 <ArrowUpRight className="h-4 w-4" />
               </Button>
             </CardHeader>
@@ -865,11 +1327,15 @@ export default function AdminDashboard() {
                 {agents?.slice(0, 3).map((agent, index) => (
                   <div key={index} className="flex items-center justify-between py-2">
                     <div>
-                      <p className="font-medium text-white">{agent.name}</p>
-                      <p className="text-sm text-gray-400">{agent.role}</p>
+                      <p className="font-medium text-foreground">
+                        {agent.name}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {agent.role}
+                      </p>
                     </div>
                     <div className="text-right">
-                      <p className="text-sm text-gray-400">Active</p>
+                      <p className="text-sm text-muted-foreground">Active</p>
                     </div>
                   </div>
                 ))}
@@ -877,21 +1343,32 @@ export default function AdminDashboard() {
             </CardContent>
           </Card>
 
-          <Card className="bg-black/40 border-white/10 backdrop-blur-xl">
+          {/* Active Agents */}
+          <Card className="bg-card/40 border border-border backdrop-blur-xl">
             <CardHeader>
-              <CardTitle className="text-white">Active Agents</CardTitle>
-              <CardDescription>Currently running onboarding agents</CardDescription>
+              <CardTitle className="text-foreground">
+                Active Agents
+              </CardTitle>
+              <CardDescription className="text-muted-foreground">
+                Currently running onboarding agents
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
                 {agents?.map((agent, index) => (
                   <div key={index} className="flex items-center justify-between py-2">
                     <div>
-                      <p className="font-medium text-white">{agent.name}</p>
-                      <p className="text-sm text-gray-400">{agent.emails?.length || 0} active sessions</p>
+                      <p className="font-medium text-foreground">
+                        {agent.name}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {agent.emails?.length || 0} active sessions
+                      </p>
                     </div>
                     <div className="text-right">
-                      <p className="text-sm text-gray-400">{agent.emails?.length || 0} total employees</p>
+                      <p className="text-sm text-muted-foreground">
+                        {agent.emails?.length || 0} total employees
+                      </p>
                     </div>
                   </div>
                 ))}
@@ -916,7 +1393,7 @@ import { type User, loginUser } from "@/lib/api"
 type UserContextType = {
   user: User | null
   setUser: React.Dispatch<React.SetStateAction<User | null>>
-  login: (email: string, password: string) => Promise<void>
+  login: (email: string, password: string) => Promise<User>
   logout: () => void
 }
 
@@ -933,15 +1410,11 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [])
 
-  const login = async (email: string, password: string) => {
-    try {
-      const loggedInUser = await loginUser(email, password)
-      setUser(loggedInUser)
-      localStorage.setItem("user", JSON.stringify(loggedInUser))
-    } catch (error) {
-      console.error("Login failed:", error)
-      throw error
-    }
+  const login = async (email: string, password: string): Promise<User> => {
+    const loggedInUser = await loginUser(email, password)
+    setUser(loggedInUser)
+    localStorage.setItem("user", JSON.stringify(loggedInUser))
+    return loggedInUser
   }
 
   const logout = () => {
@@ -981,9 +1454,9 @@ export default function EmployeeDashboard() {
 
   return (
     <div className="min-h-screen bg-black text-gray-100">
-      <GradientBackground />
+      {/* <GradientBackground /> */}
       <div className="flex h-screen overflow-hidden">
-        <Sidebar />
+        {/* <Sidebar /> */}
         <div className="flex-1 overflow-auto">
           <EmployeeHeader />
           <main className="p-6">
@@ -1141,14 +1614,22 @@ import { toast } from "@/components/ui/use-toast"
 export default function Login() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
-  const { login } = useUser()
+  // Destructure both login and user from your context.
+  const { login, user } = useUser()
   const router = useRouter()
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
-      await login(email, password)
-      router.push("/admin")
+      const loggedInUser = await login(email, password)
+      console.log(loggedInUser)
+      if (loggedInUser.role === "Admin") {
+        router.push("/admin")
+      } else if (loggedInUser.role === "Employee") {
+        router.push("/employee")
+      } else {
+        router.push("/")
+      }
     } catch (error) {
       toast({
         title: "Login Failed",
@@ -1214,65 +1695,59 @@ File: app/globals.css
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 0 0% 3.9%;
-
+    /* Light Mode Variables */
+    --background: 0 0% 100%; /* white */
+    --foreground: 240 10% 10%; /* dark slate */
     --card: 0 0% 100%;
-    --card-foreground: 0 0% 3.9%;
-
+    --card-foreground: 240 10% 10%;
     --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 3.9%;
-
-    --primary: 0 0% 9%;
-    --primary-foreground: 0 0% 98%;
-
-    --secondary: 0 0% 96.1%;
-    --secondary-foreground: 0 0% 9%;
-
-    --muted: 0 0% 96.1%;
-    --muted-foreground: 0 0% 45.1%;
-
-    --accent: 0 0% 96.1%;
-    --accent-foreground: 0 0% 9%;
-
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 98%;
-
-    --border: 0 0% 89.8%;
-    --input: 0 0% 89.8%;
-    --ring: 0 0% 3.9%;
-
-    --radius: 0.75rem;
+    --popover-foreground: 240 10% 10%;
+    --primary: 220 80% 56%; /* vibrant blue */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 275 60% 50%; /* rich purple */
+    --secondary-foreground: 0 0% 100%;
+    --muted: 0 0% 96%;
+    --muted-foreground: 240 10% 50%;
+    --accent: 275 60% 50%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 80% 90%;
+    --input: 220 80% 90%;
+    --ring: 220 80% 50%;
+    --chart-1: 220 80% 56%;
+    --chart-2: 275 60% 50%;
+    --chart-3: 200 70% 50%;
+    --chart-4: 290 70% 50%;
+    --chart-5: 255 70% 50%;
+    --radius: 0.5rem;
   }
-
   .dark {
-    --background: 0 0% 3.9%;
-    --foreground: 0 0% 98%;
-
-    --card: 0 0% 3.9%;
+    /* Dark Mode Variables */
+    --background: 240 10% 3.9%; /* deep slate */
+    --foreground: 0 0% 98%; /* nearly white */
+    --card: 240 10% 3.9%;
     --card-foreground: 0 0% 98%;
-
-    --popover: 0 0% 3.9%;
+    --popover: 240 10% 3.9%;
     --popover-foreground: 0 0% 98%;
-
-    --primary: 0 0% 98%;
-    --primary-foreground: 0 0% 9%;
-
-    --secondary: 0 0% 14.9%;
-    --secondary-foreground: 0 0% 98%;
-
-    --muted: 0 0% 14.9%;
-    --muted-foreground: 0 0% 63.9%;
-
-    --accent: 0 0% 14.9%;
-    --accent-foreground: 0 0% 98%;
-
-    --destructive: 0 62.8% 30.6%;
+    --primary: 220 80% 60%; /* lighter blue for dark mode */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 275 60% 60%; /* lighter purple */
+    --secondary-foreground: 0 0% 100%;
+    --muted: 240 10% 14%;
+    --muted-foreground: 240 10% 90%;
+    --accent: 275 60% 60%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 62% 30%;
     --destructive-foreground: 0 0% 98%;
-
-    --border: 0 0% 14.9%;
-    --input: 0 0% 14.9%;
-    --ring: 0 0% 83.1%;
+    --border: 240 10% 14%;
+    --input: 240 10% 14%;
+    --ring: 240 10% 83%;
+    --chart-1: 220 80% 60%;
+    --chart-2: 275 60% 60%;
+    --chart-3: 200 70% 60%;
+    --chart-4: 290 70% 60%;
+    --chart-5: 255 70% 60%;
   }
 }
 
@@ -1282,41 +1757,49 @@ File: app/globals.css
   }
   body {
     @apply bg-background text-foreground;
+    font-family: 'Inter', sans-serif;
   }
 }
 
 ================
 File: app/layout.tsx
 ================
-import type React from "react"
-import "./globals.css"
-import { Inter } from "next/font/google"
-import { UserProvider } from "./context/UserContext"
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import type { Metadata } from "next";
+import { Inter } from "next/font/google";
+import "./globals.css";
+import { ThemeProvider } from "@/components/theme-provider";
+import { Toaster } from "@/components/ui/toaster";
+import { Providers } from "./providers";
 
-const inter = Inter({ subsets: ["latin"] })
+const inter = Inter({ subsets: ["latin"] });
 
-const queryClient = new QueryClient()
-
-export const metadata = {
-  title: "AI Onboarding Manager",
-  description: "Streamline your employee onboarding process with AI",
-}
+export const metadata: Metadata = {
+  title: "Iro Onboarding Platform",
+  description: "AI-powered onboarding solution",
+};
 
 export default function RootLayout({
   children,
 }: {
-  children: React.ReactNode
+  children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body className={inter.className}>
-        <QueryClientProvider client={queryClient}>
-          <UserProvider>{children}</UserProvider>
-        </QueryClientProvider>
+        <Providers>
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="system"
+            enableSystem
+            disableTransitionOnChange
+          >
+            {children}
+            <Toaster />
+          </ThemeProvider>
+        </Providers>
       </body>
     </html>
-  )
+  );
 }
 
 ================
@@ -1324,87 +1807,739 @@ File: app/page.tsx
 ================
 "use client"
 
-import type React from "react"
-
-import { useState } from "react"
-import { useRouter } from "next/navigation"
-import { useUser } from "./context/UserContext"
+import { useState, useRef, useEffect } from 'react'
+import Link from 'next/link'
+import Image from 'next/image'
+import { 
+  ArrowRight, 
+  Github,
+  ExternalLink,
+  Code,
+  Brain,
+  Sparkles,
+  Zap,
+  ChevronDown,
+  Search,
+  Terminal,
+  MessageSquare
+} from 'lucide-react'
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { GradientBackground } from "@/components/gradient-background"
-import { toast } from "@/components/ui/use-toast"
 
-export default function Login() {
-  const [email, setEmail] = useState("")
-  const [password, setPassword] = useState("")
-  const { login } = useUser()
-  const router = useRouter()
-
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault()
-    try {
-      await login(email, password)
-      router.push("/admin")
-    } catch (error) {
-      toast({
-        title: "Login Failed",
-        description: "Invalid email or password. Please try again.",
-        variant: "destructive",
-      })
+export default function LandingPage() {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [activeSection, setActiveSection] = useState("")
+  
+  // Refs for each section
+  const featuresRef = useRef<HTMLElement>(null)
+  const demosRef = useRef<HTMLElement>(null)
+  const pricingRef = useRef<HTMLElement>(null)
+  
+  // Handle scroll effect
+  useEffect(() => {
+    const handleScroll = () => {
+      const scrollPosition = window.scrollY + 100
+      
+      // Check which section is currently in view
+      const sections = [
+        { id: "demos", ref: demosRef },
+        { id: "features", ref: featuresRef },
+        { id: "pricing", ref: pricingRef }
+      ]
+      
+      for (const section of sections) {
+        if (section.ref.current) {
+          const offsetTop = section.ref.current.offsetTop
+          const offsetBottom = offsetTop + section.ref.current.offsetHeight
+          
+          if (scrollPosition >= offsetTop && scrollPosition < offsetBottom) {
+            setActiveSection(section.id)
+            break
+          }
+        }
+      }
+    }
+    
+    window.addEventListener("scroll", handleScroll)
+    return () => window.removeEventListener("scroll", handleScroll)
+  }, [])
+  
+  // Smooth scroll to section
+  const scrollToSection = (sectionId: string) => {
+    const section = document.getElementById(sectionId)
+    if (section) {
+      section.scrollIntoView({ behavior: "smooth" })
     }
   }
-
+  
   return (
-    <div className="min-h-screen flex items-center justify-center">
-      <GradientBackground />
-      <div className="w-full max-w-md p-6 relative z-10">
-        <div className="bg-black/40 backdrop-blur-xl rounded-xl p-6 border border-white/10">
-          <div className="mb-8 text-center">
-            <h1 className="text-3xl font-bold text-white mb-2">Welcome back</h1>
-            <p className="text-gray-400">Sign in to your account to continue</p>
+    <div className="min-h-screen bg-[#121212]">
+      {/* Header/Navigation */}
+      <header className="fixed w-full top-0 z-50 bg-[#121212]/80 backdrop-blur-md border-b border-white/10">
+        <nav className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            <div className="flex items-center">
+              <Link href="/" className="flex items-center space-x-2">
+                <Brain className="h-8 w-8 text-blue-500" />
+                <span className="text-white text-2xl font-bold">Iro</span>
+              </Link>
+              <div className="hidden md:block ml-10">
+                <div className="flex items-baseline space-x-8">
+                  <button 
+                    onClick={() => scrollToSection("demos")}
+                    className={`px-3 py-2 text-sm font-medium transition-colors ${
+                      activeSection === "demos" ? "text-white" : "text-gray-300 hover:text-white"
+                    }`}
+                  >
+                    Demos
+                  </button>
+                  <button 
+                    onClick={() => scrollToSection("features")}
+                    className={`px-3 py-2 text-sm font-medium transition-colors ${
+                      activeSection === "features" ? "text-white" : "text-gray-300 hover:text-white"
+                    }`}
+                  >
+                    Features
+                  </button>
+                  <button 
+                    onClick={() => scrollToSection("pricing")}
+                    className={`px-3 py-2 text-sm font-medium transition-colors ${
+                      activeSection === "pricing" ? "text-white" : "text-gray-300 hover:text-white"
+                    }`}
+                  >
+                    Pricing
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div className="hidden md:block">
+              <div className="flex items-center">
+                <Link href="/login">
+                  <Button variant="ghost" className="text-white hover:bg-white/10">Sign in</Button>
+                </Link>
+                <Link href="/signup">
+                  <Button className="ml-4 bg-blue-600 hover:bg-blue-700 text-white">Sign up</Button>
+                </Link>
+              </div>
+            </div>
+            <div className="md:hidden">
+              <button
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                className="text-gray-300 hover:text-white p-2"
+              >
+                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  {mobileMenuOpen ? (
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  ) : (
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                  )}
+                </svg>
+              </button>
+            </div>
           </div>
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="email" className="text-gray-300">
-                Email
-              </Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="you@company.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="bg-black/50 border-white/10 text-white placeholder:text-gray-500"
-                required
-              />
+          
+          {/* Mobile menu */}
+          {mobileMenuOpen && (
+            <div className="md:hidden bg-[#1a1a1a] shadow-lg rounded-b-lg mt-1">
+              <div className="px-2 pt-2 pb-3 space-y-1 sm:px-3">
+                <button 
+                  onClick={() => {
+                    scrollToSection("demos")
+                    setMobileMenuOpen(false)
+                  }}
+                  className="block text-gray-300 hover:text-white px-3 py-2 text-base font-medium"
+                >
+                  Demos
+                </button>
+                <button 
+                  onClick={() => {
+                    scrollToSection("features")
+                    setMobileMenuOpen(false)
+                  }}
+                  className="block text-gray-300 hover:text-white px-3 py-2 text-base font-medium"
+                >
+                  Features
+                </button>
+                <button 
+                  onClick={() => {
+                    scrollToSection("pricing")
+                    setMobileMenuOpen(false)
+                  }}
+                  className="block text-gray-300 hover:text-white px-3 py-2 text-base font-medium"
+                >
+                  Pricing
+                </button>
+                <Link href="#docs" className="block text-gray-300 hover:text-white px-3 py-2 text-base font-medium">
+                  Docs
+                </Link>
+              </div>
+              <div className="pt-4 pb-3 border-t border-white/10">
+                <div className="px-3 space-y-2">
+                  <Link href="/login" className="block">
+                    <Button variant="ghost" className="w-full justify-start text-white hover:bg-white/10">Sign in</Button>
+                  </Link>
+                  <Link href="/signup" className="block">
+                    <Button className="w-full justify-start bg-blue-600 hover:bg-blue-700 text-white">Sign up</Button>
+                  </Link>
+                </div>
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="password" className="text-gray-300">
-                Password
-              </Label>
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="bg-black/50 border-white/10 text-white"
-                required
-              />
+          )}
+        </nav>
+      </header>
+
+      {/* Hero Section */}
+      <section className="pt-32 pb-12 md:pt-40 md:pb-24 px-4 relative overflow-hidden">
+        {/* Grid background */}
+        <div className="absolute inset-0 opacity-20" 
+          style={{ 
+            backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'%3E%3Cg fill-rule='evenodd'%3E%3Cg fill='%236366f1' fill-opacity='0.1'%3E%3Cpath opacity='.5' d='M96 95h4v1h-4v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h9V0h1v15h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9h4v1h-4v9zm-1 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-9-10h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm9-10v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-9-10h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm9-10v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-9-10h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm9-10v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-9-10h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
+            backgroundPosition: 'center',
+          }} 
+        />
+        
+        {/* Purple/Blue gradient blobs */}
+        <div className="absolute top-1/4 right-1/3 w-96 h-96 bg-blue-600 opacity-20 rounded-full filter blur-[128px]"></div>
+        <div className="absolute bottom-1/4 left-1/3 w-96 h-96 bg-purple-600 opacity-20 rounded-full filter blur-[128px]"></div>
+        
+        <div className="max-w-6xl mx-auto relative z-10">
+          <div className="flex flex-col lg:flex-row items-center justify-between gap-12">
+            <div className="max-w-2xl">
+              {/* <div className="inline-block bg-gradient-to-r from-blue-600 to-purple-600 px-4 py-1 rounded-full text-sm font-medium mb-6">
+                <div className="flex items-center space-x-2">
+                  <span className="text-white">BACKED BY Y COMBINATOR</span>
+                </div>
+              </div> */}
+              <h1 className="text-4xl md:text-6xl font-bold text-white mb-6 leading-tight">
+                Iro: The Ultimate<br />
+                <span className="bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-400">
+                  AI Onboarding Platform
+                </span>
+              </h1>
+              <p className="text-xl text-gray-300 mb-10">
+                Bring your team up to speed with the best AI-powered onboarding platform. 
+                Built to streamline your employee experience from day one to full productivity.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-4 mb-12">
+                <Link href="login">
+                  <Button className="bg-blue-600 hover:bg-blue-700 text-white border-0 text-lg px-8 py-6 h-auto">
+                    Get Started
+                    <ArrowRight className="ml-2 h-5 w-5" />
+                  </Button>
+                </Link>
+                <Button variant="outline" className="text-white bg-white/10 border-white/20 hover:bg-white/70 text-lg px-8 py-6 h-auto">
+                  Book a Demo
+                </Button>
+              </div>
             </div>
-            <Button type="submit" className="w-full bg-white text-black hover:bg-gray-100">
-              Sign In
-            </Button>
-          </form>
+            
+            <div className="w-full max-w-lg">
+              <div className="relative">
+                <div className="absolute -inset-1 rounded-lg bg-gradient-to-r from-blue-500 via-purple-500 to-blue-500 opacity-75 blur"></div>
+                <div className="relative bg-[#1a1a1a] border border-white/10 rounded-lg overflow-hidden shadow-xl p-2">
+                  <div className="absolute top-2 left-2 flex space-x-2">
+                    <div className="w-3 h-3 rounded-full bg-red-500"></div>
+                    <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
+                    <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                  </div>
+                  <div className="pt-6 p-4 bg-[#111] rounded-lg">
+                    {/* Feature cards */}
+                    {[
+                      { icon: Code, title: "Code with Cline", desc: "AI-powered code assistant" },
+                      { icon: Sparkles, title: "Predict with Supermaven", desc: "Smart predictions for your data" },
+                      { icon: Brain, title: "Remember with MemoAI", desc: "Contextual organizational memory" },
+                      { icon: Zap, title: "Build with Agents", desc: "Custom AI agents for your workflow" }
+                    ].map((feature, index) => (
+                      <div key={index} className="mb-4 p-3 bg-[#1a1a1a] rounded-lg border border-white/10 hover:border-blue-500/50 transition-colors">
+                        <div className="flex items-center gap-3">
+                          <feature.icon className="h-5 w-5 text-blue-400" />
+                          <div>
+                            <div className="font-medium text-white">{feature.title}</div>
+                            <div className="text-sm text-gray-400">{feature.desc}</div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <div className="flex justify-center mt-16">
+            <button 
+              onClick={() => scrollToSection("demos")}
+              className="text-white hover:text-blue-400 transition-colors animate-bounce"
+            >
+              <span className="sr-only">Scroll down</span>
+              <ChevronDown className="h-8 w-8" />
+            </button>
+          </div>
         </div>
-      </div>
+      </section>
+
+      {/* Demos Section */}
+      <section id="demos" ref={demosRef} className="py-20 px-4 relative">
+        <div className="max-w-6xl mx-auto">
+          <div className="text-center mb-16">
+            <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">See Iro in Action</h2>
+            <p className="text-xl text-gray-300 max-w-3xl mx-auto">
+              Watch how our AI tools can transform your workflow
+            </p>
+          </div>
+          
+          <div className="grid lg:grid-cols-2 gap-12">
+            <div>
+              <div className="rounded-lg overflow-hidden border border-white/10 bg-[#1a1a1a] shadow-xl">
+                <div className="p-6 border-b border-white/10">
+                  <div className="flex items-center mb-5">
+                    <Terminal className="h-6 w-6 text-blue-400 mr-3" />
+                    <h3 className="text-xl font-bold text-white">Code automatically with Iro Agent</h3>
+                  </div>
+                  <div className="bg-[#121212] rounded-lg p-4 h-[350px] relative flex items-center justify-center">
+                    {/* Video placeholder - replace with actual video component */}
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="w-16 h-16 rounded-full bg-blue-500/90 flex items-center justify-center cursor-pointer hover:bg-blue-600 transition-colors">
+                        <div className="w-0 h-0 border-t-[10px] border-t-transparent border-l-[16px] border-l-white border-b-[10px] border-b-transparent ml-1"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="p-5">
+                  <p className="text-gray-300">
+                    Let Iro handle repetitive coding tasks and generate entire functions based on your requirements.
+                  </p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="space-y-6">
+              <div className="rounded-lg overflow-hidden border border-white/10 bg-[#1a1a1a] shadow-xl">
+                <div className="p-6 border-b border-white/10">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center">
+                      <MessageSquare className="h-6 w-6 text-purple-400 mr-3" />
+                      <h3 className="text-xl font-bold text-white">Make specific in-line changes with Iro Chat</h3>
+                    </div>
+                    <ChevronDown className="h-5 w-5 text-gray-400" />
+                  </div>
+                </div>
+                <div className="p-5 text-gray-300">
+                  <p className="mb-4">Ask questions or generate code with the context of your codebase for more accurate results with Iro Chat - an AI chat assistant, powered by Continue.</p>
+                  <div className="w-full bg-gray-700 rounded-full h-2">
+                    <div className="bg-gradient-to-r from-green-400 to-green-600 h-2 rounded-full" style={{ width: "40%" }}></div>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="rounded-lg overflow-hidden border border-white/10 bg-[#1a1a1a] shadow-xl">
+                <div className="p-6 border-b border-white/10">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center">
+                      <Code className="h-6 w-6 text-blue-400 mr-3" />
+                      <h3 className="text-xl font-bold text-white">No more tedious changes with Iro Chat</h3>
+                    </div>
+                    <ChevronDown className="h-5 w-5 text-gray-400" />
+                  </div>
+                </div>
+                <div className="hidden p-5"></div>
+              </div>
+              
+              <div className="rounded-lg overflow-hidden border border-white/10 bg-[#1a1a1a] shadow-xl">
+                <div className="p-6 border-b border-white/10">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center">
+                      <Search className="h-6 w-6 text-purple-400 mr-3" />
+                      <h3 className="text-xl font-bold text-white">Research anything with Iro Search</h3>
+                    </div>
+                    <ChevronDown className="h-5 w-5 text-gray-400" />
+                  </div>
+                </div>
+                <div className="hidden p-5"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Features Section */}
+      <section id="features" ref={featuresRef} className="py-20 px-4 relative">
+        <div className="max-w-6xl mx-auto">
+          <div className="text-center mb-16">
+            <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">AI-Powered Features</h2>
+            <p className="text-xl text-gray-300 max-w-3xl mx-auto">
+              Everything you need to create exceptional onboarding experiences
+            </p>
+          </div>
+          
+          <div className="grid md:grid-cols-3 gap-8">
+            {[
+              {
+                title: "Personalized Pathways",
+                description: "Custom onboarding paths for each team member based on role and experience.",
+                icon: "✨"
+              },
+              {
+                title: "Interactive Tutorials",
+                description: "Step-by-step guidance with interactive elements to ensure knowledge retention.",
+                icon: "🔍"
+              },
+              {
+                title: "Progress Analytics",
+                description: "Real-time insights into employee progress with actionable recommendations.",
+                icon: "📊"
+              },
+              {
+                title: "Automation Workflows",
+                description: "Automate routine tasks and approvals to save valuable time and resources.",
+                icon: "⚙️"
+              },
+              {
+                title: "Smart Integration",
+                description: "Seamlessly connects with your existing tools and systems for a unified experience.",
+                icon: "🔗"
+              },
+              {
+                title: "Global Support",
+                description: "24/7 assistance and multilingual support for teams across different regions.",
+                icon: "🌍"
+              }
+            ].map((feature, index) => (
+              <div key={index} className="rounded-lg p-6 bg-[#1a1a1a] border border-white/10 hover:border-blue-500/50 transition-all hover:shadow-lg hover:shadow-blue-500/10">
+                <div className="text-4xl mb-4">{feature.icon}</div>
+                <h3 className="text-xl font-semibold text-white mb-2">{feature.title}</h3>
+                <p className="text-gray-300">{feature.description}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Built for Business Section */}
+      <section className="py-20 px-4 bg-[#0e0e0e]">
+        <div className="max-w-6xl mx-auto">
+          <h2 className="text-3xl md:text-4xl font-bold text-white mb-16 text-center">Built for business</h2>
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
+            {/* Private */}
+            <div className="bg-[#1a1a1a] rounded-lg p-6 flex flex-col items-center text-center hover:bg-[#1e1e1e] transition-colors">
+              <div className="h-32 flex items-center justify-center mb-8">
+                <svg className="w-16 h-16 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <path d="M3 9h18v10a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                  <path d="M8 9V5a2 2 0 012-2h4a2 2 0 012 2v4" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-semibold text-white mb-2">Private</h3>
+              <p className="text-gray-400">Your data stays on your servers</p>
+            </div>
+            
+            {/* Secure */}
+            <div className="bg-[#1a1a1a] rounded-lg p-6 flex flex-col items-center text-center hover:bg-[#1e1e1e] transition-colors">
+              <div className="h-32 flex items-center justify-center mb-8">
+                <svg className="w-16 h-16 text-[#FF6B6B]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                  <path d="M7 11V7a5 5 0 0110 0v4" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-semibold text-white mb-2">Secure</h3>
+              <p className="text-gray-400">End-to-end encryption</p>
+            </div>
+            
+            {/* 24/7 Support */}
+            <div className="bg-[#1a1a1a] rounded-lg p-6 flex flex-col items-center text-center hover:bg-[#1e1e1e] transition-colors">
+              <div className="h-32 flex items-center justify-center mb-8">
+                <svg className="w-16 h-16 text-[#4CD964]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-semibold text-white mb-2">24/7 support</h3>
+              <p className="text-gray-400">Dedicated support team of AI experts</p>
+            </div>
+            
+            {/* Enterprise-grade */}
+            <div className="bg-[#1a1a1a] rounded-lg p-6 flex flex-col items-center text-center hover:bg-[#1e1e1e] transition-colors">
+              <div className="h-32 flex items-center justify-center mb-8">
+                <svg className="w-16 h-16 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <path d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16" />
+                  <path d="M3 7h18" />
+                  <path d="M7 11h2" />
+                  <path d="M7 15h2" />
+                  <path d="M15 11h2" />
+                  <path d="M15 15h2" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-semibold text-white mb-2">Enterprise-grade</h3>
+              <p className="text-gray-400">Built for large organizations</p>
+            </div>
+            
+            {/* Customizable */}
+            <div className="bg-[#1a1a1a] rounded-lg p-6 flex flex-col items-center text-center hover:bg-[#1e1e1e] transition-colors">
+              <div className="h-32 flex items-center justify-center mb-8">
+                <svg className="w-16 h-16 text-[#A78BFA]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <path d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-semibold text-white mb-2">Customizable</h3>
+              <p className="text-gray-400">Tailored to your needs</p>
+            </div>
+          </div>
+        </div>
+      </section>
+      
+      {/* Pricing Section */}
+      <section id="pricing" ref={pricingRef} className="py-20 px-4 relative">
+        <div className="max-w-6xl mx-auto">
+          <div className="text-center mb-16">
+            <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">Simple, Transparent Pricing</h2>
+            <p className="text-xl text-gray-300 max-w-3xl mx-auto">
+              Choose the plan that works best for your team
+            </p>
+          </div>
+          
+          <div className="grid md:grid-cols-3 gap-8">
+            {[
+              {
+                name: "Starter",
+                price: "$29",
+                description: "Perfect for small teams just getting started",
+                features: [
+                  "Up to 10 team members",
+                  "Basic AI onboarding paths",
+                  "Standard templates",
+                  "Email support"
+                ]
+              },
+              {
+                name: "Professional",
+                price: "$79",
+                description: "Ideal for growing teams with specific needs",
+                features: [
+                  "Up to 50 team members",
+                  "Advanced AI customization",
+                  "Custom templates",
+                  "Priority support",
+                  "Advanced analytics"
+                ],
+                highlighted: true
+              },
+              {
+                name: "Enterprise",
+                price: "Custom",
+                description: "For large organizations with complex requirements",
+                features: [
+                  "Unlimited team members",
+                  "Full AI capabilities",
+                  "Custom integration",
+                  "Dedicated support",
+                  "Advanced security",
+                  "SLA guarantees"
+                ]
+              }
+            ].map((plan, index) => (
+              <div 
+                key={index} 
+                className={`rounded-lg p-6 border ${
+                  plan.highlighted 
+                    ? "bg-gradient-to-b from-[#1a1a1a] to-[#1a1a1a] border-blue-500 shadow-lg shadow-blue-500/20" 
+                    : "bg-[#1a1a1a] border-white/10"
+                }`}
+              >
+                <h3 className="text-xl font-bold text-white mb-2">{plan.name}</h3>
+                <div className="flex items-baseline mb-4">
+                  <span className="text-3xl font-bold text-white">{plan.price}</span>
+                  {plan.price !== "Custom" && <span className="text-gray-400 ml-2">/month</span>}
+                </div>
+                <p className="text-gray-300 mb-6">{plan.description}</p>
+                <ul className="space-y-3 mb-6">
+                  {plan.features.map((feature, i) => (
+                    <li key={i} className="flex items-start">
+                      <svg className="h-5 w-5 text-blue-400 mr-2 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      <span className="text-gray-300">{feature}</span>
+                    </li>
+                  ))}
+                </ul>
+                <Button 
+                  className={`w-full ${
+                    plan.highlighted 
+                      ? "bg-blue-600 hover:bg-blue-700 text-white" 
+                      : "bg-[#232323] hover:bg-[#2a2a2a] text-white"
+                  }`}
+                >
+                  {plan.price === "Custom" ? "Contact Us" : "Get Started"}
+                </Button>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+      
+      {/* CTA Section */}
+      <section className="py-16 px-4">
+        <div className="max-w-5xl mx-auto rounded-2xl overflow-hidden relative">
+          <div className="absolute inset-0 bg-gradient-to-r from-blue-600/20 to-purple-600/20 backdrop-blur-sm"></div>
+          <div className="relative p-8 md:p-12 text-center">
+            <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">Ready to transform your onboarding?</h2>
+            <p className="text-xl text-gray-300 mb-8 max-w-2xl mx-auto">
+              Join thousands of companies already using Iro to create exceptional employee experiences.
+            </p>
+            <Button className="bg-white text-gray-900 hover:bg-gray-100 text-lg px-8 py-3 h-auto">
+              Start Your Free Trial
+            </Button>
+          </div>
+        </div>
+      </section>
+      
+      {/* Footer */}
+      <footer className="mt-20 pb-10 px-4 border-t border-white/10 pt-10">
+        <div className="max-w-6xl mx-auto">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mb-10">
+            <div>
+              <h3 className="text-white font-semibold mb-4">Product</h3>
+              <ul className="space-y-2">
+                <li><Link href="#" className="text-gray-400 hover:text-white text-sm">Features</Link></li>
+                <li><Link href="#" className="text-gray-400 hover:text-white text-sm">Integrations</Link></li>
+                <li><Link href="#" className="text-gray-400 hover:text-white text-sm">Pricing</Link></li>
+                <li><Link href="#" className="text-gray-400 hover:text-white text-sm">Updates</Link></li>
+              </ul>
+            </div>
+            <div>
+              <h3 className="text-white font-semibold mb-4">Company</h3>
+              <ul className="space-y-2">
+                <li><Link href="#" className="text-gray-400 hover:text-white text-sm">About</Link></li>
+                <li><Link href="#" className="text-gray-400 hover:text-white text-sm">Careers</Link></li>
+                <li><Link href="#" className="text-gray-400 hover:text-white text-sm">Blog</Link></li>
+                <li><Link href="#" className="text-gray-400 hover:text-white text-sm">Contact</Link></li>
+              </ul>
+            </div>
+            <div>
+              <h3 className="text-white font-semibold mb-4">Resources</h3>
+              <ul className="space-y-2">
+                <li><Link href="#" className="text-gray-400 hover:text-white text-sm">Documentation</Link></li>
+                <li><Link href="#" className="text-gray-400 hover:text-white text-sm">Help Center</Link></li>
+                <li><Link href="#" className="text-gray-400 hover:text-white text-sm">Guides</Link></li>
+                <li><Link href="#" className="text-gray-400 hover:text-white text-sm">API</Link></li>
+              </ul>
+            </div>
+            <div>
+              <h3 className="text-white font-semibold mb-4">Legal</h3>
+              <ul className="space-y-2">
+                <li><Link href="#" className="text-gray-400 hover:text-white text-sm">Privacy</Link></li>
+                <li><Link href="#" className="text-gray-400 hover:text-white text-sm">Terms</Link></li>
+                <li><Link href="#" className="text-gray-400 hover:text-white text-sm">Security</Link></li>
+              </ul>
+            </div>
+          </div>
+          
+          <div className="flex flex-col md:flex-row justify-between items-center pt-8 border-t border-white/10">
+            <div className="flex items-center mb-4 md:mb-0">
+              <Brain className="h-6 w-6 text-blue-500 mr-2" />
+              <span className="text-white font-semibold">Iro</span>
+            </div>
+            <div className="text-gray-400 text-sm">
+              © {new Date().getFullYear()} Iro Technologies. All rights reserved.
+            </div>
+            <div className="flex space-x-4 mt-4 md:mt-0">
+              <Link href="#" className="text-gray-400 hover:text-white">
+                <Github className="h-5 w-5" />
+              </Link>
+              <Link href="#" className="text-gray-400 hover:text-white">
+                <ExternalLink className="h-5 w-5" />
+              </Link>
+            </div>
+          </div>
+        </div>
+      </footer>
     </div>
+  )
+}
+
+================
+File: app/providers.tsx
+================
+"use client"
+
+import React from "react"
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { UserProvider } from "./context/UserContext"
+
+// Create a client
+const queryClient = new QueryClient()
+
+export function Providers({ children }: { children: React.ReactNode }) {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <UserProvider>{children}</UserProvider>
+    </QueryClientProvider>
+  )
+}
+
+================
+File: components/admin/delete-confirmation.tsx
+================
+"use client"
+
+import * as React from "react"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
+
+interface DeleteConfirmationProps {
+  isOpen: boolean
+  title: string
+  description: string
+  onConfirm: () => void
+  onCancel: () => void
+}
+
+export function DeleteConfirmation({
+  isOpen,
+  title,
+  description,
+  onConfirm,
+  onCancel,
+}: DeleteConfirmationProps) {
+  return (
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onCancel()}>
+      <DialogContent className="sm:max-w-[425px] bg-card border-border">
+        <DialogHeader>
+          <DialogTitle className="text-foreground">{title}</DialogTitle>
+          <DialogDescription className="text-muted-foreground">
+            {description}
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter className="flex flex-row justify-end gap-2 pt-4">
+          <Button
+            variant="outline"
+            onClick={onCancel}
+            className="border-border text-foreground hover:bg-muted"
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="destructive"
+            onClick={onConfirm}
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+          >
+            Delete
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 
 ================
 File: components/admin/expanded-employee-row.tsx
 ================
+"use client"
+
 import { Card, CardContent } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 
@@ -1425,40 +2560,58 @@ interface ExpandedEmployeeRowProps {
 
 export function ExpandedEmployeeRow({ employee }: ExpandedEmployeeRowProps) {
   const progressPercentage =
-    (Number.parseInt(employee.progress.split("/")[0]) / Number.parseInt(employee.progress.split("/")[1])) * 100
+    (Number.parseInt(employee.progress.split("/")[0]) /
+      Number.parseInt(employee.progress.split("/")[1])) *
+    100
 
   return (
-    <Card className="bg-gray-800/50 border-gray-700">
-      <CardContent className="p-4 space-y-4">
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <h4 className="text-sm font-medium text-gray-400">Email</h4>
-            <p className="text-gray-200">{employee.email}</p>
+    <div className="animate-fadeIn">
+      <Card className="bg-card/40 border-border/10">
+        <CardContent className="p-4 space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <h4 className="text-sm font-medium text-muted-foreground">
+                Email
+              </h4>
+              <p className="text-card-foreground">{employee.email}</p>
+            </div>
+            <div>
+              <h4 className="text-sm font-medium text-muted-foreground">
+                Started
+              </h4>
+              <p className="text-card-foreground">{employee.started}</p>
+            </div>
           </div>
           <div>
-            <h4 className="text-sm font-medium text-gray-400">Started</h4>
-            <p className="text-gray-200">{employee.started}</p>
+            <h4 className="text-sm font-medium text-muted-foreground mb-2">
+              Progress
+            </h4>
+            <Progress value={progressPercentage} className="h-2" />
+            <p className="text-sm text-muted-foreground mt-1">
+              {employee.progress} steps completed
+            </p>
           </div>
-        </div>
-        <div>
-          <h4 className="text-sm font-medium text-gray-400 mb-2">Progress</h4>
-          <Progress value={progressPercentage} className="h-2" />
-          <p className="text-sm text-gray-400 mt-1">{employee.progress} steps completed</p>
-        </div>
-        <div>
-          <h4 className="text-sm font-medium text-gray-400">Last Activity</h4>
-          <p className="text-gray-200">{employee.lastActivity}</p>
-        </div>
-        <div>
-          <h4 className="text-sm font-medium text-gray-400">Next Step</h4>
-          <p className="text-gray-200">{employee.nextStep}</p>
-        </div>
-        <div>
-          <h4 className="text-sm font-medium text-gray-400">Notes</h4>
-          <p className="text-gray-200">{employee.notes}</p>
-        </div>
-      </CardContent>
-    </Card>
+          <div>
+            <h4 className="text-sm font-medium text-muted-foreground">
+              Last Activity
+            </h4>
+            <p className="text-card-foreground">{employee.lastActivity}</p>
+          </div>
+          <div>
+            <h4 className="text-sm font-medium text-muted-foreground">
+              Next Step
+            </h4>
+            <p className="text-card-foreground">{employee.nextStep}</p>
+          </div>
+          <div>
+            <h4 className="text-sm font-medium text-muted-foreground">
+              Notes
+            </h4>
+            <p className="text-card-foreground">{employee.notes}</p>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   )
 }
 
@@ -1467,95 +2620,390 @@ File: components/admin/record-onboarding.tsx
 ================
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useRef, useEffect } from "react"
+import { Reorder } from "framer-motion"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Mic, StopCircle } from "lucide-react"
-
-interface Step {
-  title: string;
-  description: string;
-}
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
+import { toast } from "@/components/ui/use-toast"
+import { Mic, Video, X, Square, Loader2, Trash2 } from "lucide-react"
+import { DeleteConfirmation } from "@/components/admin/delete-confirmation"
+import { deleteRecording, uploadRecording, updateAgentSteps, type OnboardingStep } from "@/lib/api"
 
 interface RecordOnboardingProps {
-  onFinish: (steps: Step[]) => void
+  onFinish: (steps: OnboardingStep[]) => void
+  // Optional agentId; if provided, reordering will update the DB
+  agentId?: string
 }
 
-export function RecordOnboarding({ onFinish }: RecordOnboardingProps) {
+export function RecordOnboarding({ onFinish, agentId }: RecordOnboardingProps) {
   const [isRecording, setIsRecording] = useState(false)
   const [recordingTime, setRecordingTime] = useState(0)
+  const [recordingBlob, setRecordingBlob] = useState<Blob | null>(null)
+  const [steps, setSteps] = useState<OnboardingStep[]>([])
+  const [processingStep, setProcessingStep] = useState(false)
+  const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null)
+  const [stepToDelete, setStepToDelete] = useState<number | null>(null)
+
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const mediaStreamRef = useRef<MediaStream | null>(null)
+  const recordingChunksRef = useRef<BlobPart[]>([])
+  const timerRef = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
-    let interval: NodeJS.Timeout
-
-    if (isRecording) {
-      interval = setInterval(() => {
-        setRecordingTime((prevTime) => prevTime + 1)
-      }, 1000)
-    }
-
     return () => {
-      if (interval) {
-        clearInterval(interval)
-      }
+      mediaStreamRef.current?.getTracks().forEach((track) => track.stop())
+      if (timerRef.current) clearInterval(timerRef.current)
+      if (pollingInterval) clearInterval(pollingInterval)
     }
-  }, [isRecording])
+  }, [pollingInterval])
 
-  const startRecording = () => {
-    setIsRecording(true)
+  const startRecording = async () => {
+    try {
+      const displayStream = await navigator.mediaDevices.getDisplayMedia({
+        video: { cursor: "always", displaySurface: "browser" },
+        audio: true,
+      })
+
+      let micStream: MediaStream | null = null
+      try {
+        micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+      } catch (err) {
+        toast({
+          title: "Microphone access denied",
+          description: "Recording will continue without audio from microphone",
+          variant: "destructive",
+        })
+      }
+
+      const combinedStream = micStream
+        ? new MediaStream([
+            ...displayStream.getVideoTracks(),
+            ...displayStream.getAudioTracks(),
+            ...micStream.getAudioTracks(),
+          ])
+        : displayStream
+
+      mediaStreamRef.current = combinedStream
+
+      mediaRecorderRef.current = new MediaRecorder(combinedStream, {
+        mimeType: "video/webm;codecs=vp9,opus",
+      })
+
+      mediaRecorderRef.current.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          recordingChunksRef.current.push(event.data)
+        }
+      }
+
+      mediaRecorderRef.current.onstop = () => {
+        const blob = new Blob(recordingChunksRef.current, { type: "video/webm" })
+        setRecordingBlob(blob)
+        recordingChunksRef.current = []
+        if (timerRef.current) {
+          clearInterval(timerRef.current)
+          timerRef.current = null
+        }
+      }
+
+      mediaRecorderRef.current.start(1000)
+      setIsRecording(true)
+
+      let seconds = 0
+      timerRef.current = setInterval(() => {
+        seconds++
+        setRecordingTime(seconds)
+      }, 1000)
+    } catch (err) {
+      console.error("Error starting recording:", err)
+      toast({
+        title: "Recording failed",
+        description:
+          "Could not access screen recording. Please check permissions and try again.",
+        variant: "destructive",
+      })
+    }
   }
 
   const stopRecording = () => {
-    setIsRecording(false)
-    // Simulate AI processing
-    setTimeout(() => {
-      const generatedSteps: Step[] = [
-        { title: "Introduction to company culture and values", description: "Learn about the company culture and values." },
-        { title: "Setup of development environment", description: "Configure your development tools and environment." },
-        { title: "Overview of project structure and architecture", description: "Understand the project structure and architecture." },
-        { title: "Introduction to team members and communication channels", description: "Meet your team and learn communication channels." },
-        { title: "Review of coding standards and best practices", description: "Review coding standards and best practices." },
-      ]
-      onFinish(generatedSteps)
-    }, 2000)
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop()
+      mediaStreamRef.current?.getTracks().forEach((track) => track.stop())
+      setIsRecording(false)
+    }
+  }
+
+  const uploadRecordingHandler = async () => {
+    if (!recordingBlob) {
+      toast({
+        title: "No recording to upload",
+        description: "Please record your screen first.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setProcessingStep(true)
+
+    try {
+      const { file_id } = await uploadRecording(recordingBlob, steps.length)
+
+      const interval = setInterval(async () => {
+        try {
+          const metadataResponse = await fetch(`http://localhost:8000/recordings/${file_id}/metadata`)
+          if (!metadataResponse.ok) {
+            throw new Error("Failed to fetch metadata")
+          }
+
+          const metadata = await metadataResponse.json()
+
+          if (metadata.extracted_steps && metadata.extracted_steps.length > 0) {
+            const newSteps = metadata.extracted_steps.map((step: OnboardingStep) => ({
+              ...step,
+              recordingUrl: `http://localhost:8000/recordings/${file_id}`,
+              _id: crypto.randomUUID() // Temporary ID for new steps
+            }))
+
+            setSteps((prevSteps) => [...prevSteps, ...newSteps])
+            clearInterval(interval)
+            setPollingInterval(null)
+            setProcessingStep(false)
+            setRecordingBlob(null)
+
+            toast({
+              title: "Processing complete",
+              description: `Added ${newSteps.length} steps from your recording.`,
+            })
+          } else if (metadata.processing_error) {
+            clearInterval(interval)
+            setPollingInterval(null)
+            setProcessingStep(false)
+
+            toast({
+              title: "Processing failed",
+              description: metadata.processing_error,
+              variant: "destructive",
+            })
+          }
+        } catch (error) {
+          console.error("Error polling for metadata:", error)
+        }
+      }, 3000)
+
+      setPollingInterval(interval)
+    } catch (error) {
+      console.error("Error uploading recording:", error)
+      setProcessingStep(false)
+      toast({
+        title: "Upload failed",
+        description: "Could not upload recording. Please try again.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`
+  }
+
+  const handleFinish = () => {
+    onFinish(steps)
+  }
+
+  // Handler for when the steps are reordered via drag and drop.
+  const handleReorder = async (newOrder: OnboardingStep[]) => {
+    setSteps(newOrder)
+    if (agentId) {
+      try {
+        await updateAgentSteps(agentId, newOrder)
+        toast({
+          title: "Success",
+          description: "Steps order updated successfully.",
+        })
+      } catch (error) {
+        console.error("Error updating steps order:", error)
+        toast({
+          title: "Error",
+          description: "Failed to update steps order.",
+          variant: "destructive",
+        })
+      }
+    }
+  }
+
+  // Delete step functions remain the same
+  const confirmDeleteStep = (index: number) => {
+    setStepToDelete(index)
+  }
+
+  const handleDeleteStep = async () => {
+    if (stepToDelete === null) return
+
+    const stepToRemove = steps[stepToDelete]
+    const newSteps = [...steps]
+    newSteps.splice(stepToDelete, 1)
+    setSteps(newSteps)
+
+    if (stepToRemove.recordingUrl) {
+      try {
+        await deleteRecording(stepToRemove.recordingUrl)
+      } catch (error) {
+        console.error("Error deleting recording:", error)
+      }
+    }
+
+    setStepToDelete(null)
+  }
+
+  const cancelDeleteStep = () => {
+    setStepToDelete(null)
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <Card className="w-full max-w-md bg-gray-900 border-gray-700">
-        <CardHeader>
-          <CardTitle className="text-white">Record Onboarding Process</CardTitle>
+    <div className="fixed inset-0 bg-background/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <Card className="w-full max-w-3xl bg-card border-border">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle className="text-card-foreground">
+            Record Onboarding Steps
+          </CardTitle>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => onFinish([])}
+            className="text-muted-foreground"
+          >
+            <X className="h-5 w-5" />
+          </Button>
         </CardHeader>
-        <CardContent>
-          <div className="text-center mb-4">
-            <p className="text-gray-300 mb-2">
-              {isRecording
-                ? "Recording in progress... Narrate your onboarding process."
-                : "Click 'Start Recording' and walk through your onboarding process."}
+        <CardContent className="space-y-6">
+          <div className="bg-card rounded-lg p-4 border border-border">
+            <h3 className="text-foreground text-lg mb-2">How to use</h3>
+            <p className="text-muted-foreground mb-4">
+              Simply record your screen while narrating the onboarding steps.
+              Our AI will automatically extract step titles and descriptions
+              from your recording.
             </p>
-            {isRecording && (
-              <p className="text-red-500 font-semibold">
-                Recording: {Math.floor(recordingTime / 60)}:
-                {recordingTime % 60 < 10 ? "0" : ""}
-                {recordingTime % 60}
-              </p>
+
+            {recordingBlob ? (
+              <div className="flex items-center justify-between">
+                <p className="text-card-foreground flex items-center">
+                  <Video className="mr-2 h-4 w-4 text-yellow-500" />
+                  Recording ready to process
+                </p>
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={uploadRecordingHandler}
+                  disabled={processingStep}
+                  className="bg-gradient-to-r from-primary to-secondary hover:from-primary/90 hover:to-secondary/90"
+                >
+                  {processingStep ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Processing...
+                    </>
+                  ) : (
+                    <>Process Recording</>
+                  )}
+                </Button>
+              </div>
+            ) : isRecording ? (
+              <div className="flex items-center justify-between">
+                <p className="text-destructive flex items-center">
+                  <span className="inline-block h-3 w-3 rounded-full bg-destructive mr-2 animate-pulse"></span>
+                  Recording: {formatTime(recordingTime)}
+                </p>
+                <Button variant="outline" size="sm" onClick={stopRecording}>
+                  <Square className="mr-2 h-4 w-4" />
+                  Stop Recording
+                </Button>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between">
+                <p className="text-muted-foreground">No recording yet</p>
+                <Button variant="default" size="sm" onClick={startRecording}>
+                  <Mic className="mr-2 h-4 w-4" />
+                  Start Recording
+                </Button>
+              </div>
             )}
           </div>
-          <div className="flex justify-center">
-            {!isRecording ? (
-              <Button onClick={startRecording} className="bg-red-600 hover:bg-red-700">
-                <Mic className="mr-2 h-4 w-4" />
-                Start Recording
-              </Button>
-            ) : (
-              <Button onClick={stopRecording} variant="outline" className="border-red-600 text-red-600">
-                <StopCircle className="mr-2 h-4 w-4" />
-                Stop Recording
-              </Button>
-            )}
+
+          {/* Reorderable list of extracted steps */}
+          {steps.length > 0 && (
+            <div className="space-y-4">
+              <h3 className="text-foreground text-lg">Extracted Steps</h3>
+              <Reorder.Group
+                axis="y"
+                values={steps}
+                onReorder={handleReorder}
+                className="rounded-md bg-muted/40 p-1 space-y-1"
+              >
+                {steps.map((step, index) => (
+                  <Reorder.Item
+                    key={step._id || index}
+                    value={step}
+                    whileDrag={{ scale: 1.05 }}
+                    className="flex items-center p-3 rounded-md transition-colors bg-card hover:bg-muted border border-border group"
+                  >
+                    {/* Grip icon as a visual drag handle */}
+                    <div className="mr-2 cursor-grab select-none">
+                      <svg className="h-5 w-5 text-muted-foreground" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 9h16M4 15h16" />
+                      </svg>
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="text-foreground font-medium">{step.title}</h4>
+                      <p className="text-muted-foreground text-sm line-clamp-1 mt-1">
+                        {step.description}
+                      </p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => confirmDeleteStep(index)}
+                      className="text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                      aria-label="Delete step"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </Reorder.Item>
+                ))}
+              </Reorder.Group>
+            </div>
+          )}
+
+          <div className="flex justify-between">
+            <Button
+              variant="outline"
+              onClick={() => onFinish([])}
+              disabled={isRecording || processingStep}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleFinish}
+              disabled={isRecording || processingStep || steps.length === 0}
+            >
+              {steps.length > 0 ? `Finish (${steps.length} steps)` : "Finish"}
+            </Button>
           </div>
         </CardContent>
       </Card>
+
+      <DeleteConfirmation
+        isOpen={stepToDelete !== null}
+        title="Delete Onboarding Step"
+        description="Are you sure you want to delete this step? This will also remove any associated recordings and cannot be undone."
+        onConfirm={handleDeleteStep}
+        onCancel={cancelDeleteStep}
+      />
     </div>
   )
 }
@@ -1567,7 +3015,7 @@ File: components/admin/sidebar.tsx
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Home, Plus, Users, LogOut, Settings } from "lucide-react"
+import { Home, Plus, Users, LogOut, Settings, Laptop, Sun, Moon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -1581,13 +3029,49 @@ import { useUser } from "@/app/context/UserContext"
 import { useRouter } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
 import { getAgents } from "@/lib/api"
+import { useTheme } from "next-themes"
+
+// Theme toggle button component
+function ThemeToggleButton() {
+  const { theme, setTheme } = useTheme()
+
+  const cycleTheme = () => {
+    if (theme === "system") {
+      setTheme("light")
+    } else if (theme === "light") {
+      setTheme("dark")
+    } else {
+      setTheme("system")
+    }
+  }
+
+  let Icon
+  if (theme === "light") {
+    Icon = Sun
+  } else if (theme === "dark") {
+    Icon = Moon
+  } else {
+    Icon = Laptop
+  }
+
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      onClick={cycleTheme}
+      title={`Switch theme (current: ${theme})`}
+    >
+      <Icon className="h-5 w-5" />
+    </Button>
+  )
+}
 
 export function Sidebar() {
   const pathname = usePathname()
   const { user, logout } = useUser()
   const router = useRouter()
 
-  // Now simply fetching all agents without organization filtering.
+  // Fetch agents if needed
   const { data: agents } = useQuery({
     queryKey: ["agents"],
     queryFn: () => getAgents(),
@@ -1600,24 +3084,28 @@ export function Sidebar() {
   }
 
   return (
-    <div className="w-80 border-r border-gray-800 backdrop-blur-sm bg-black/60 text-gray-300 p-4 flex flex-col h-screen">
-      <Link
-        href="/admin"
-        className="flex items-center gap-2 px-2 py-1.5 mb-6 text-gray-300 hover:text-white"
-      >
-        <Home size={20} />
-        <span>Home</span>
-      </Link>
+    <div className="w-80 border-r border-border backdrop-blur-sm bg-card/60 text-foreground p-4 flex flex-col h-screen">
+      {/* Top area with theme toggle and Home link */}
+      <div className="flex items-center justify-between mb-6">
+        <Link href="/admin">
+          <div className="flex items-center gap-2 text-foreground hover:text-primary">
+            <Home size={20} />
+            <span>Home</span>
+          </div>
+        </Link>
+        <ThemeToggleButton />
+      </div>
 
+      {/* AGENTS Section */}
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-sm font-semibold tracking-wider text-gray-500">
+        <h2 className="text-sm font-semibold tracking-wider text-muted-foreground">
           AGENTS
         </h2>
         <Link href="/admin/create">
           <Button
             variant="ghost"
             size="sm"
-            className="h-8 px-2 text-gray-400 hover:text-white hover:bg-muted/30"
+            className="h-8 px-2 text-muted-foreground hover:text-primary hover:bg-muted/30"
           >
             <Plus size={16} />
             Create Agent
@@ -1633,81 +3121,64 @@ export function Sidebar() {
             className={cn(
               "block p-3 rounded-lg text-md transition-colors",
               pathname === `/admin/agents/${agent._id}`
-                ? "bg-gray-800/60 text-white"
-                : "hover:bg-gray-800/50 text-gray-400"
+                ? "bg-muted/60 text-foreground"
+                : "hover:bg-muted/50 text-muted-foreground"
             )}
           >
             <div className="font-medium mb-1">{agent.name}</div>
-            <div className="flex items-center text-xs text-gray-500">
+            <div className="flex items-center text-xs text-muted-foreground">
               <span>ROLE: {agent.role}</span>
             </div>
           </Link>
         ))}
       </div>
 
-      <Link
-        href="/admin/users"
-        className={cn(
-          "flex items-center gap-2 px-3 py-2 rounded-md text-gray-300 hover:bg-white/10 hover:text-white transition-colors",
-          pathname === "/admin/users" ? "bg-gray-800/60 text-white" : ""
-        )}
-      >
-        <Users size={18} />
-        <span>Manage Users</span>
-      </Link>
-
-      <div className="mt-auto pt-4 border-t border-gray-800">
+      {/* Profile Dropdown at the bottom */}
+      <div className="mt-auto pt-4 border-t border-border">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
-              className="w-full flex items-center justify-start px-2 py-3 hover:bg-gray-800/50 rounded-lg"
+              className="w-full flex items-center justify-start px-2 py-3 hover:bg-muted/50 rounded-lg"
             >
-              <Avatar className="w-9 h-9 mr-3 border border-gray-700">
-                <AvatarImage
-                  src="/placeholder.svg?height=36&width=36"
-                  alt="Admin"
-                />
-                <AvatarFallback className="bg-gradient-to-r from-blue-500 to-purple-600 text-white">
+              <Avatar className="w-9 h-9 mr-3 border border-border">
+                <AvatarImage src="/placeholder.svg" alt="Admin" />
+                <AvatarFallback className="bg-primary text-primary-foreground">
                   {user?.email.charAt(0).toUpperCase()}
                 </AvatarFallback>
               </Avatar>
               <div className="flex flex-col items-start overflow-hidden">
-                <span className="text-sm font-medium text-gray-200">
+                <span className="text-sm font-medium text-foreground">
                   {user?.email}
                 </span>
-                <span className="text-xs text-gray-500 truncate w-full">
+                <span className="text-xs text-muted-foreground truncate w-full">
                   {user?.role}
                 </span>
               </div>
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent
-            className="w-56 bg-gray-900 border-gray-700 text-gray-200"
-            align="end"
-            forceMount
-          >
-            <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer focus:bg-gray-800">
+          <DropdownMenuContent className="w-56 bg-card border-border text-foreground" align="end" forceMount>
+            <DropdownMenuItem className="hover:bg-muted cursor-pointer focus:bg-muted">
               <Link href="/admin/profile" className="flex items-center w-full">
                 <Avatar className="w-4 h-4 mr-2">
-                  <AvatarFallback className="bg-gradient-to-r from-blue-500 to-purple-600 text-white text-[10px]">
+                  <AvatarFallback className="bg-primary text-primary-foreground text-[10px]">
                     {user?.email.charAt(0).toUpperCase()}
                   </AvatarFallback>
                 </Avatar>
                 <span>Profile</span>
               </Link>
             </DropdownMenuItem>
-            <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer focus:bg-gray-800">
-              <Link href="/admin/settings" className="flex items-center w-full">
-                <Settings className="mr-2 h-4 w-4 text-gray-400" />
-                <span>Settings</span>
+            <DropdownMenuItem className="hover:bg-muted cursor-pointer focus:bg-muted">
+              <Link href="/admin/users" className="flex items-center w-full">
+                <Users className="mr-2 h-4 w-4 text-muted-foreground" />
+                <span>Manage Users</span>
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem
-              className="hover:bg-gray-800 cursor-pointer focus:bg-gray-800"
+              className="hover:bg-muted cursor-pointer focus:bg-muted"
               onSelect={handleLogout}
             >
-              <LogOut className="mr-2 h-4 w-4 text-gray-400" />
+              <LogOut className="mr-2 h-4 w-4 text-muted-foreground" />
               <span>Log out</span>
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -1762,7 +3233,13 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 import { Label } from "@/components/ui/label"
-import { type User, type UserCreate, createUser, updateUser, deleteUser } from "@/lib/api"
+import {
+  type User,
+  type UserCreate,
+  createUser,
+  updateUser,
+  deleteUser,
+} from "@/lib/api"
 import { useUser } from "@/app/context/UserContext"
 import { toast } from "@/components/ui/use-toast"
 
@@ -1774,7 +3251,6 @@ interface UserManagementProps {
 export function UserManagement({ users, onUserChange }: UserManagementProps) {
   const { user: currentUser } = useUser()
   const [filteredUsers, setFilteredUsers] = useState<User[]>(users)
-  // Removed organization_id from newUser initial state.
   const [newUser, setNewUser] = useState<UserCreate>({
     email: "",
     role: "Employee",
@@ -1860,26 +3336,29 @@ export function UserManagement({ users, onUserChange }: UserManagementProps) {
   }
 
   return (
-    <Card className="bg-black/40 border-white/10 backdrop-blur-xl">
-      <CardHeader>
-        <CardTitle className="text-white">User Management</CardTitle>
-        <CardDescription>Add, edit, or remove users</CardDescription>
-      </CardHeader>
+    <Card className="bg-card/40 border-border/10 backdrop-blur-xl">
+      <CardHeader />
       <CardContent>
         <div className="space-y-6">
+          {/* New user form */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <Input
               placeholder="Email"
               value={newUser.email}
-              onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
-              className="bg-gray-900 border-gray-700 text-gray-200"
+              onChange={(e) =>
+                setNewUser({ ...newUser, email: e.target.value })
+              }
+              className="bg-card border-border text-card-foreground"
             />
             <select
               value={newUser.role}
               onChange={(e) =>
-                setNewUser({ ...newUser, role: e.target.value as "Employee" | "Admin" })
+                setNewUser({
+                  ...newUser,
+                  role: e.target.value as "Employee" | "Admin",
+                })
               }
-              className="bg-gray-900 border-gray-700 text-gray-200 rounded-md px-3 py-2"
+              className="bg-card border-border text-card-foreground rounded-md px-3 py-2"
             >
               <option value="Employee">Employee</option>
               <option value="Admin">Admin</option>
@@ -1888,72 +3367,87 @@ export function UserManagement({ users, onUserChange }: UserManagementProps) {
               type="password"
               placeholder="Password"
               value={newUser.password}
-              onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
-              className="bg-gray-900 border-gray-700 text-gray-200"
+              onChange={(e) =>
+                setNewUser({ ...newUser, password: e.target.value })
+              }
+              className="bg-card border-border text-card-foreground"
             />
             <Button
               onClick={addUser}
-              className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700"
+              className="bg-gradient-to-r from-primary to-secondary hover:from-primary/90 hover:to-secondary/90"
             >
               <Plus className="mr-2 h-4 w-4" /> Add User
             </Button>
           </div>
 
+          {/* Search input */}
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="Search users..."
               value={searchTerm}
               onChange={(e) => handleSearch(e.target.value)}
-              className="bg-gray-900 border-gray-700 text-gray-200 pl-10"
+              className="bg-card border-border text-card-foreground pl-10"
             />
           </div>
 
-          <div className="rounded-md border border-gray-800 overflow-hidden">
+          {/* Users table */}
+          <div className="rounded-md border border-border overflow-hidden">
             <Table>
-              <TableHeader className="bg-gray-900/50">
-                <TableRow className="hover:bg-transparent border-gray-800">
-                  <TableHead className="text-gray-400 font-medium">Email</TableHead>
-                  <TableHead className="text-gray-400 font-medium">Role</TableHead>
-                  <TableHead className="text-gray-400 font-medium text-right">
+              <TableHeader className="bg-card/50">
+                <TableRow className="hover:bg-transparent border-border">
+                  <TableHead className="text-muted-foreground font-medium">
+                    Email
+                  </TableHead>
+                  <TableHead className="text-muted-foreground font-medium">
+                    Role
+                  </TableHead>
+                  <TableHead className="text-muted-foreground font-medium text-right">
                     Actions
                   </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredUsers.map((user) => (
-                  <TableRow key={user._id} className="border-gray-800 hover:bg-gray-800/30">
-                    <TableCell className="font-medium text-gray-300">
+                  <TableRow
+                    key={user._id}
+                    className="border-border hover:bg-card/30"
+                  >
+                    <TableCell className="font-medium text-card-foreground">
                       {user.email}
                     </TableCell>
                     <TableCell>
                       <span
                         className={`px-2 py-1 rounded-full text-xs ${
                           user.role === "Admin"
-                            ? "bg-purple-500/20 text-purple-300"
-                            : "bg-blue-500/20 text-blue-300"
+                            ? "bg-secondary/20 text-secondary-foreground"
+                            : "bg-primary/20 text-primary-foreground"
                         }`}
                       >
                         {user.role}
                       </span>
                     </TableCell>
                     <TableCell className="text-right">
-                      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+                      <Dialog
+                        open={isEditDialogOpen}
+                        onOpenChange={setIsEditDialogOpen}
+                      >
                         <DialogTrigger asChild>
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="text-blue-400 hover:text-blue-300 hover:bg-blue-500/10"
+                            className="text-primary hover:text-primary/80 hover:bg-primary/10"
                             onClick={() => setEditingUser(user)}
                           >
                             <Pencil className="h-4 w-4" />
                           </Button>
                         </DialogTrigger>
-                        <DialogContent className="bg-gray-900 text-gray-200">
+                        <DialogContent className="bg-card text-card-foreground">
                           <DialogHeader>
                             <DialogTitle>Edit User</DialogTitle>
                             <DialogDescription>
-                              Make changes to the user here. Click save when you're done.
+                              Make changes to the user here. Click save when you're
+                              done.
                             </DialogDescription>
                           </DialogHeader>
                           <div className="grid gap-4 py-4">
@@ -1969,7 +3463,7 @@ export function UserManagement({ users, onUserChange }: UserManagementProps) {
                                     prev ? { ...prev, email: e.target.value } : null
                                   )
                                 }
-                                className="col-span-3 bg-gray-800 border-gray-700"
+                                className="col-span-3 bg-card border-border"
                               />
                             </div>
                             <div className="grid grid-cols-4 items-center gap-4">
@@ -1982,11 +3476,14 @@ export function UserManagement({ users, onUserChange }: UserManagementProps) {
                                 onChange={(e) =>
                                   setEditingUser((prev) =>
                                     prev
-                                      ? { ...prev, role: e.target.value as "Employee" | "Admin" }
+                                      ? {
+                                          ...prev,
+                                          role: e.target.value as "Employee" | "Admin",
+                                        }
                                       : null
                                   )
                                 }
-                                className="col-span-3 bg-gray-800 border-gray-700 rounded-md px-3 py-2"
+                                className="col-span-3 bg-card border-border rounded-md px-3 py-2"
                               >
                                 <option value="Employee">Employee</option>
                                 <option value="Admin">Admin</option>
@@ -1994,7 +3491,10 @@ export function UserManagement({ users, onUserChange }: UserManagementProps) {
                             </div>
                           </div>
                           <DialogFooter>
-                            <Button onClick={updateUserHandler} className="bg-blue-500 hover:bg-blue-600">
+                            <Button
+                              onClick={updateUserHandler}
+                              className="bg-primary hover:bg-primary/90"
+                            >
                               Save changes
                             </Button>
                           </DialogFooter>
@@ -2005,26 +3505,27 @@ export function UserManagement({ users, onUserChange }: UserManagementProps) {
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="text-red-400 hover:text-red-300 hover:bg-red-500/10 ml-1"
+                            className="text-destructive hover:text-destructive-foreground hover:bg-destructive/10 ml-1"
                           >
                             <Trash className="h-4 w-4" />
                           </Button>
                         </AlertDialogTrigger>
-                        <AlertDialogContent className="bg-gray-900 text-gray-200">
+                        <AlertDialogContent className="bg-card text-card-foreground">
                           <AlertDialogHeader>
                             <AlertDialogTitle>
                               Are you absolutely sure?
                             </AlertDialogTitle>
                             <AlertDialogDescription>
-                              This action cannot be undone. This will permanently delete the user account.
+                              This action cannot be undone. This will permanently
+                              delete the user account.
                             </AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>
-                            <AlertDialogCancel className="bg-gray-800 text-gray-200 hover:bg-gray-700">
+                            <AlertDialogCancel className="bg-card hover:bg-card/90 text-card-foreground">
                               Cancel
                             </AlertDialogCancel>
                             <AlertDialogAction
-                              className="bg-red-600 hover:bg-red-700"
+                              className="bg-destructive hover:bg-destructive/90"
                               onClick={() => deleteUserHandler(user._id)}
                             >
                               Delete
@@ -7971,13 +9472,9 @@ export interface User {
   role: string;
 }
 
-export interface Agent {
+export interface Agent extends AgentCreate {
+  id: string;
   _id: string;
-  name: string;
-  role: string;
-  description?: string;
-  emails?: string[];
-  steps?: Array<{ title: string; description: string }>;
 }
 
 export interface UserCreate {
@@ -7997,7 +9494,7 @@ export interface AgentCreate {
   role: string;
   description?: string;
   emails: string[];
-  steps: Array<{ title: string; description: string }>;
+  steps?: Array<OnboardingStep>;
 }
 
 export interface AgentUpdate {
@@ -8005,7 +9502,14 @@ export interface AgentUpdate {
   role?: string;
   description?: string;
   emails?: string[];
-  steps?: Array<{ title: string; description: string }>;
+  steps?: Array<OnboardingStep>;
+}
+
+export interface OnboardingStep {
+  title: string;
+  description: string;
+  recordingUrl?: string;
+  _id?: string;
 }
 
 // Set your API base URL.
@@ -8089,45 +9593,173 @@ export async function deleteUser(id: string): Promise<void> {
 
 // GET /agents
 export async function getAgents(): Promise<Agent[]> {
-  return request<Agent[]>("/agents");
+  const response = await fetch(`${API_BASE}/agents/`);
+  
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to fetch agents');
+  }
+  
+  return response.json();
 }
 
 // POST /agents
 export async function createAgent(agent: AgentCreate): Promise<Agent> {
-  return request<Agent>("/agents", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
+  const response = await fetch(`${API_BASE}/agents/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
     body: JSON.stringify(agent),
   });
+  
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to create agent');
+  }
+  
+  return response.json();
 }
 
+// Upload recording
+export async function uploadRecording(
+  file: Blob,
+  stepIndex: number
+): Promise<{ url: string; file_id: string }> {
+  const formData = new FormData();
+  formData.append('file', file, `step-${stepIndex + 1}.webm`);
+  formData.append('step_index', stepIndex.toString());
+  
+  const response = await fetch(`${API_BASE}/recordings/upload`, {
+    method: 'POST',
+    body: formData,
+  });
+  
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
+    throw new Error(error.detail || 'Failed to upload recording');
+  }
+  
+  return response.json();
+}
+
+
+export const updateAgentSteps = async (agentId: string, steps: OnboardingStep[]): Promise<any> => {
+  try {
+    const response = await fetch(`/api/agents/${agentId}/steps`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ steps }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to update steps order');
+    }
+
+    return response.json();
+  } catch (error) {
+    console.error('Error updating steps:', error);
+    throw error;
+  }
+};
+
+export const fetchAgentSteps = async (agentId: string): Promise<OnboardingStep[]> => {
+  try {
+    const response = await fetch(`/api/agents/${agentId}/steps`);
+    
+    if (!response.ok) {
+      throw new Error('Failed to fetch steps');
+    }
+    
+    return response.json();
+  } catch (error) {
+    console.error('Error fetching steps:', error);
+    return [];
+  }
+};
+
+export const deleteStep = async (agentId: string, stepId: string): Promise<boolean> => {
+  try {
+    const response = await fetch(`/api/agents/${agentId}/steps/${stepId}`, {
+      method: 'DELETE',
+    });
+    
+    if (!response.ok) {
+      throw new Error('Failed to delete step');
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Error deleting step:', error);
+    return false;
+  }
+};
+
 // GET /agents/{id}
-export async function getAgent(id: string): Promise<Agent> {
-  return request<Agent>(`/agents/${id}`);
+export async function getAgent(agentId: string): Promise<Agent> {
+  const response = await fetch(`${API_BASE}/agents/${agentId}`);
+  
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to fetch agent');
+  }
+  
+  return response.json();
 }
 
 // PUT /agents/{id}
-export async function updateAgent(
-  id: string,
-  agent: AgentUpdate
-): Promise<Agent> {
-  return request<Agent>(`/agents/${id}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(agent),
+export async function updateAgent(agentId: string, agentUpdate: Partial<AgentCreate>): Promise<Agent> {
+  const response = await fetch(`${API_BASE}/agents/${agentId}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(agentUpdate),
   });
+  
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to update agent');
+  }
+  
+  return response.json();
 }
 
 // DELETE /agents/{id}
-export async function deleteAgent(id: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/agents/${id}`, {
-    method: "DELETE",
+export async function deleteAgent(agentId: string): Promise<void> {
+  const response = await fetch(`${API_BASE}/agents/${agentId}`, {
+    method: 'DELETE',
   });
-  if (!res.ok) {
-    const errorText = await res.text();
-    throw new Error(errorText || "Failed to delete agent");
+  
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
+    throw new Error(error.detail || 'Failed to delete agent');
   }
 }
+
+export const deleteRecording = async (recordingId: string): Promise<boolean> => {
+  try {
+    // Extract the recording ID from the URL if it's a full URL
+    const id = recordingId.startsWith('http://localhost:8000/recordings/') 
+      ? recordingId.split('http://localhost:8000/recordings/')[1] 
+      : recordingId;
+      
+    const response = await fetch(`http://localhost:8000/recordings/${id}`, {
+      method: 'DELETE',
+    });
+    
+    if (!response.ok) {
+      throw new Error('Failed to delete recording');
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Error deleting recording:', error);
+    return false;
+  }
+};
 
 ================
 File: lib/utils.ts
@@ -8429,94 +10061,104 @@ File: styles/globals.css
 @tailwind components;
 @tailwind utilities;
 
-body {
-  font-family: Arial, Helvetica, sans-serif;
-}
-
-@layer utilities {
-  .text-balance {
-    text-wrap: balance;
-  }
-}
-
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 0 0% 3.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 0 0% 3.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 3.9%;
-    --primary: 0 0% 9%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 0 0% 96.1%;
-    --secondary-foreground: 0 0% 9%;
-    --muted: 0 0% 96.1%;
-    --muted-foreground: 0 0% 45.1%;
-    --accent: 0 0% 96.1%;
-    --accent-foreground: 0 0% 9%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 89.8%;
-    --input: 0 0% 89.8%;
-    --ring: 0 0% 3.9%;
-    --chart-1: 12 76% 61%;
-    --chart-2: 173 58% 39%;
-    --chart-3: 197 37% 24%;
-    --chart-4: 43 74% 66%;
-    --chart-5: 27 87% 67%;
+    /* Light mode variables */
+    --background: 0, 0%, 100%; /* white */
+    --foreground: 210, 10%, 23%; /* dark gray-blue */
+    --card: 0, 0%, 100%;
+    --card-foreground: 210, 10%, 23%;
+    --popover: 0, 0%, 100%;
+    --popover-foreground: 210, 10%, 23%;
+    
+    /* Our main colors */
+    --primary: 220, 90%, 56%; /* vibrant blue */
+    --primary-foreground: 0, 0%, 100%; /* white */
+    --secondary: 275, 60%, 50%; /* rich purple */
+    --secondary-foreground: 0, 0%, 100%; /* white */
+    
+    --muted: 210, 16%, 93%;
+    --muted-foreground: 210, 16%, 40%;
+    --accent: var(--secondary);
+    --accent-foreground: var(--secondary-foreground);
+    
+    --destructive: 0, 84%, 60%; /* red-ish */
+    --destructive-foreground: 0, 0%, 100%;
+    
+    --border: 210, 16%, 80%;
+    --input: 210, 16%, 80%;
+    --ring: var(--primary);
+    
+    --chart-1: var(--primary);
+    --chart-2: var(--secondary);
+    --chart-3: 30, 80%, 55%;
+    --chart-4: 280, 65%, 60%;
+    --chart-5: 340, 75%, 55%;
+    
     --radius: 0.5rem;
-    --sidebar-background: 0 0% 98%;
-    --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 240 5.9% 10%;
-    --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 240 4.8% 95.9%;
-    --sidebar-accent-foreground: 240 5.9% 10%;
-    --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    
+    /* Sidebar (if used) */
+    --sidebar-background: 0, 0%, 100%;
+    --sidebar-foreground: 210, 10%, 23%;
+    --sidebar-primary: var(--primary);
+    --sidebar-primary-foreground: var(--primary-foreground);
+    --sidebar-accent: var(--secondary);
+    --sidebar-accent-foreground: var(--secondary-foreground);
+    --sidebar-border: 210, 16%, 80%;
+    --sidebar-ring: var(--ring);
   }
+
   .dark {
-    --background: 0 0% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 0 0% 3.9%;
-    --card-foreground: 0 0% 98%;
-    --popover: 0 0% 3.9%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 0 0% 98%;
-    --primary-foreground: 0 0% 9%;
-    --secondary: 0 0% 14.9%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 0 0% 14.9%;
-    --muted-foreground: 0 0% 63.9%;
-    --accent: 0 0% 14.9%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 14.9%;
-    --input: 0 0% 14.9%;
-    --ring: 0 0% 83.1%;
-    --chart-1: 220 70% 50%;
-    --chart-2: 160 60% 45%;
-    --chart-3: 30 80% 55%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 340 75% 55%;
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    /* Dark mode variables */
+    --background: 210, 10%, 10%; /* very dark */
+    --foreground: 210, 20%, 90%; /* light gray-blue */
+    --card: 210, 10%, 10%;
+    --card-foreground: 210, 20%, 90%;
+    --popover: 210, 10%, 10%;
+    --popover-foreground: 210, 20%, 90%;
+    
+    /* For dark mode we use lighter accent shades */
+    --primary: 220, 90%, 65%; /* lighter blue */
+    --primary-foreground: 210, 10%, 10%; /* almost black */
+    --secondary: 275, 60%, 65%; /* lighter purple */
+    --secondary-foreground: 210, 10%, 10%;
+    
+    --muted: 210, 16%, 14%;
+    --muted-foreground: 210, 16%, 70%;
+    --accent: var(--secondary);
+    --accent-foreground: var(--secondary-foreground);
+    
+    --destructive: 0, 62%, 30%;
+    --destructive-foreground: 0, 0%, 98%;
+    
+    --border: 210, 16%, 14%;
+    --input: 210, 16%, 14%;
+    --ring: var(--primary);
+    
+    --chart-1: var(--primary);
+    --chart-2: var(--secondary);
+    --chart-3: 30, 80%, 55%;
+    --chart-4: 280, 65%, 60%;
+    --chart-5: 340, 75%, 55%;
+    
+    --sidebar-background: 210, 10%, 10%;
+    --sidebar-foreground: 210, 20%, 90%;
+    --sidebar-primary: var(--primary);
+    --sidebar-primary-foreground: var(--primary-foreground);
+    --sidebar-accent: var(--secondary);
+    --sidebar-accent-foreground: var(--secondary-foreground);
+    --sidebar-border: 210, 16%, 14%;
+    --sidebar-ring: var(--ring);
   }
 }
 
 @layer base {
   * {
-    @apply border-border;
+    @apply border-[hsl(var(--border))];
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-[hsl(var(--background))] text-[hsl(var(--foreground))];
+    font-family: 'Arial', Helvetica, sans-serif;
   }
 }
 
@@ -8722,6 +10364,7 @@ File: package.json
     "cmdk": "1.0.4",
     "date-fns": "4.1.0",
     "embla-carousel-react": "8.5.1",
+    "framer-motion": "^12.4.11",
     "input-otp": "1.4.1",
     "lucide-react": "^0.454.0",
     "next": "14.2.16",
@@ -8731,6 +10374,7 @@ File: package.json
     "react-day-picker": "8.10.1",
     "react-dom": "^18",
     "react-hook-form": "^7.54.1",
+    "react-intersection-observer": "^9.16.0",
     "react-resizable-panels": "^2.1.7",
     "recharts": "2.15.0",
     "repomix": "^0.2.30",
@@ -8890,11 +10534,16 @@ const config: Config = {
   				to: {
   					height: '0'
   				}
-  			}
+  			},
+				fadeIn: {
+					'0%': { opacity: '0' },
+					'100%': { opacity: '1' },
+				},
   		},
   		animation: {
   			'accordion-down': 'accordion-down 0.2s ease-out',
-  			'accordion-up': 'accordion-up 0.2s ease-out'
+  			'accordion-up': 'accordion-up 0.2s ease-out',
+				fadeIn: 'fadeIn 300ms ease-out',
   		}
   	}
   },
