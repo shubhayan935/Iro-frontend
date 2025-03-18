@@ -12,8 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Separator } from "@/components/ui/separator"
 import { EmployeeHeader } from "@/components/employee/header"
 import { EmployeeSidebar } from "@/components/employee/sidebar"
-import { OnboardingAssistant } from "@/components/employee/onboarding-assistant"
-import { AssistantTrigger } from "@/components/employee/assistant-trigger"
+// import { OnboardingSession } from "@/components/employee/onboarding-session"
 import { toast } from "@/components/ui/use-toast"
 import { Loader2, BookOpen, FileCheck, Clock, Calendar, ArrowRight, PlayCircle } from "lucide-react"
 
@@ -21,8 +20,7 @@ export default function EmployeeDashboard() {
   const { user } = useUser()
   const router = useRouter()
   const [activeAgentId, setActiveAgentId] = useState<string | null>(null)
-  const [assistantActive, setAssistantActive] = useState(false)
-  const [assistantMinimized, setAssistantMinimized] = useState(false)
+  const [sessionActive, setSessionActive] = useState(false)
   
   // Fetch available agents for this employee
   const { 
@@ -61,8 +59,8 @@ export default function EmployeeDashboard() {
     agent.emails.includes(user?.email || '')
   )
   
-  // Handle launching the AI assistant
-  const handleLaunchAssistant = () => {
+  // Handle start session
+  const handleStartSession = () => {
     if (!activeAgentId) {
       toast({
         title: "No onboarding path selected",
@@ -72,8 +70,7 @@ export default function EmployeeDashboard() {
       return
     }
     
-    setAssistantActive(true)
-    setAssistantMinimized(false)
+    setSessionActive(true)
   }
   
   // If user is not logged in, redirect to login
@@ -122,25 +119,8 @@ export default function EmployeeDashboard() {
     )
   }
   
-  // Render the assistant overlay if active (but don't return early)
-  const renderAssistantOverlay = () => {
-    if (assistantActive && activeAgentId) {
-      return (
-        <OnboardingAssistant
-          agentId={activeAgentId}
-          onClose={() => setAssistantActive(false)}
-          onMinimize={() => setAssistantMinimized(true)}
-        />
-      )
-    }
-    return null
-  }
-  
   return (
     <div className="min-h-screen bg-background">
-      {/* Render the assistant overlay */}
-      {renderAssistantOverlay()}
-      
       <div className="flex h-screen overflow-hidden">
         <EmployeeSidebar 
           agents={agents || []} 
@@ -204,9 +184,9 @@ export default function EmployeeDashboard() {
                       <Button
                         size="lg"
                         className="gap-2"
-                        onClick={handleLaunchAssistant}
+                        onClick={handleStartSession}
                       >
-                        {completedSteps > 0 ? "Continue Onboarding" : "Start Onboarding"}
+                        {completedSteps > 0 ? "Continue Session" : "Start Onboarding"}
                         {completedSteps > 0 ? <ArrowRight className="h-4 w-4" /> : <PlayCircle className="h-4 w-4" />}
                       </Button>
                     </div>
@@ -232,7 +212,7 @@ export default function EmployeeDashboard() {
                           
                           {activeAgent.steps.length > 5 && (
                             <div className="text-center pt-2">
-                              <Button variant="link" onClick={handleLaunchAssistant}>
+                              <Button variant="link" onClick={handleStartSession}>
                                 View all {activeAgent.steps.length} steps
                               </Button>
                             </div>
@@ -326,7 +306,6 @@ export default function EmployeeDashboard() {
           </main>
         </div>
       </div>
-      <AssistantTrigger />
     </div>
   )
 }

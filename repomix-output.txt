@@ -76,7 +76,9 @@ components/
     sidebar.tsx
     user-management.tsx
   employee/
+    assistant-trigger.tsx
     header.tsx
+    onboarding-assistant.tsx
     sidebar.tsx
   ui/
     accordion.tsx
@@ -137,6 +139,7 @@ hooks/
   use-toast.ts
 lib/
   api.ts
+  assistant-api.ts
   utils.ts
 public/
   placeholder-logo.svg
@@ -1438,126 +1441,252 @@ File: app/employee/page.tsx
 ================
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { useQuery } from "@tanstack/react-query"
+import { useRouter } from "next/navigation"
+import { useUser } from "@/app/context/UserContext"
+import { getAgents, type Agent } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { GradientBackground } from "@/components/gradient-background"
-import { Sidebar } from "@/components/employee/sidebar"
+import { Separator } from "@/components/ui/separator"
 import { EmployeeHeader } from "@/components/employee/header"
-import { ArrowRight, BookOpen, CheckCircle2, FileText, MessageSquare, Play } from "lucide-react"
+import { EmployeeSidebar } from "@/components/employee/sidebar"
+// import { OnboardingSession } from "@/components/employee/onboarding-session"
+import { toast } from "@/components/ui/use-toast"
+import { Loader2, BookOpen, FileCheck, Clock, Calendar, ArrowRight, PlayCircle } from "lucide-react"
 
 export default function EmployeeDashboard() {
+  const { user } = useUser()
+  const router = useRouter()
+  const [activeAgentId, setActiveAgentId] = useState<string | null>(null)
   const [sessionActive, setSessionActive] = useState(false)
-  const progress = 60
-
+  
+  // Fetch available agents for this employee
+  const { 
+    data: agents,
+    isLoading: isLoadingAgents,
+    error: agentsError
+  } = useQuery({
+    queryKey: ["agents"],
+    queryFn: () => getAgents(),
+    enabled: !!user,
+    refetchOnWindowFocus: false,
+  })
+  
+  // Select the first agent by default
+  useEffect(() => {
+    if (agents && agents.length > 0 && !activeAgentId) {
+      // Find the first agent where the employee's email is in the agent's emails array
+      const matchingAgent = agents.find(agent => 
+        agent.emails.includes(user?.email || '')
+      )
+      
+      if (matchingAgent) {
+        setActiveAgentId(matchingAgent._id)
+      }
+    }
+  }, [agents, activeAgentId, user])
+  
+  // Calculate progress stats
+  const activeAgent = agents?.find(agent => agent._id === activeAgentId)
+  const totalSteps = activeAgent?.steps?.length || 0
+  const completedSteps = 0 // This would come from user progress tracking
+  const progressPercentage = totalSteps > 0 ? (completedSteps / totalSteps) * 100 : 0
+  
+  // Check if the user has any agents available to them
+  const hasAvailableAgents = agents && agents.some(agent => 
+    agent.emails.includes(user?.email || '')
+  )
+  
+  // Handle start session
+  const handleStartSession = () => {
+    if (!activeAgentId) {
+      toast({
+        title: "No onboarding path selected",
+        description: "Please select an onboarding path to begin.",
+        variant: "destructive",
+      })
+      return
+    }
+    
+    setSessionActive(true)
+  }
+  
+  // If user is not logged in, redirect to login
+  useEffect(() => {
+    if (!user) {
+      router.push('/login')
+    }
+  }, [user, router])
+  
+  if (!user) return null
+  
+  if (isLoadingAgents) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <span className="ml-2 text-xl">Loading your onboarding...</span>
+      </div>
+    )
+  }
+  
+  if (agentsError) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 text-center">
+        <h1 className="text-2xl font-bold text-destructive mb-4">Error Loading Onboarding</h1>
+        <p className="text-muted-foreground mb-6">
+          We encountered a problem loading your onboarding information. Please try again later or contact support.
+        </p>
+        <Button onClick={() => router.push('/login')}>
+          Back to Login
+        </Button>
+      </div>
+    )
+  }
+  
+  if (!hasAvailableAgents) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 text-center">
+        <h1 className="text-2xl font-bold mb-4">No Onboarding Assigned</h1>
+        <p className="text-muted-foreground mb-6">
+          You don't have any onboarding paths assigned to you yet. Please contact your administrator.
+        </p>
+        <Button onClick={() => router.push('/login')}>
+          Back to Login
+        </Button>
+      </div>
+    )
+  }
+  
   return (
-    <div className="min-h-screen bg-black text-gray-100">
-      {/* <GradientBackground /> */}
+    <div className="min-h-screen bg-background">
       <div className="flex h-screen overflow-hidden">
-        {/* <Sidebar /> */}
+        <EmployeeSidebar 
+          agents={agents || []} 
+          activeAgentId={activeAgentId}
+          onSelectAgent={setActiveAgentId}
+        />
         <div className="flex-1 overflow-auto">
-          <EmployeeHeader />
+          <EmployeeHeader user={user} />
           <main className="p-6">
             <div className="mb-6">
-              <h1 className="text-3xl font-bold mb-2">Welcome, John!</h1>
-              <p className="text-gray-400">Let's continue your onboarding journey.</p>
+              <h1 className="text-3xl font-bold mb-2">
+                Welcome, {user.email.split('@')[0]}!
+              </h1>
+              <p className="text-muted-foreground">
+                {activeAgent ? `Continue your ${activeAgent.role} onboarding journey.` : 'Select an onboarding path to begin.'}
+              </p>
             </div>
 
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 mb-6">
-              <Card className="bg-black/40 border-white/10 backdrop-blur-xl">
-                <CardHeader className="flex flex-row items-center justify-between pb-2">
-                  <CardTitle className="text-sm font-medium text-gray-400">Overall Progress</CardTitle>
-                  <CheckCircle2 className="h-4 w-4 text-green-400" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold mb-2">{progress}%</div>
-                  <Progress value={progress} className="h-2" />
-                </CardContent>
-              </Card>
-              <Card className="bg-black/40 border-white/10 backdrop-blur-xl">
-                <CardHeader className="flex flex-row items-center justify-between pb-2">
-                  <CardTitle className="text-sm font-medium text-gray-400">Tasks Completed</CardTitle>
-                  <FileText className="h-4 w-4 text-blue-400" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">12 / 20</div>
-                </CardContent>
-              </Card>
-              <Card className="bg-black/40 border-white/10 backdrop-blur-xl">
-                <CardHeader className="flex flex-row items-center justify-between pb-2">
-                  <CardTitle className="text-sm font-medium text-gray-400">Time Remaining</CardTitle>
-                  <MessageSquare className="h-4 w-4 text-purple-400" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">3 days</div>
-                </CardContent>
-              </Card>
-            </div>
-
-            <Card className="bg-black/40 border-white/10 backdrop-blur-xl mb-6">
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-xl font-semibold">Continue Your Onboarding</h2>
-                  <Button
-                    size="lg"
-                    className="gap-2 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700"
-                    onClick={() => setSessionActive(true)}
-                  >
-                    {sessionActive ? "Resume Session" : "Start Session"}
-                    {sessionActive ? <ArrowRight className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-                  </Button>
+            {activeAgent && (
+              <>
+                <div className="grid gap-6 md:grid-cols-3 mb-6">
+                  <Card>
+                    <CardHeader className="flex flex-row items-center justify-between pb-2">
+                      <CardTitle className="text-sm font-medium">Overall Progress</CardTitle>
+                      <FileCheck className="h-4 w-4 text-primary" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold mb-2">{progressPercentage.toFixed(0)}%</div>
+                      <Progress value={progressPercentage} className="h-2" />
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardHeader className="flex flex-row items-center justify-between pb-2">
+                      <CardTitle className="text-sm font-medium">Tasks Completed</CardTitle>
+                      <BookOpen className="h-4 w-4 text-primary" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold">{completedSteps} / {totalSteps}</div>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardHeader className="flex flex-row items-center justify-between pb-2">
+                      <CardTitle className="text-sm font-medium">Estimated Time</CardTitle>
+                      <Clock className="h-4 w-4 text-primary" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold">{Math.ceil(totalSteps * 15 / 60)} hours</div>
+                    </CardContent>
+                  </Card>
                 </div>
-                <p className="text-gray-400 mb-4">
-                  Pick up where you left off or start a new session with your AI onboarding assistant.
-                </p>
-              </CardContent>
-            </Card>
 
-            <Tabs defaultValue="tasks" className="w-full">
-              <TabsList className="bg-black/40 border-white/10 backdrop-blur-xl">
-                <TabsTrigger value="tasks">Upcoming Tasks</TabsTrigger>
-                <TabsTrigger value="resources">Resources</TabsTrigger>
-                <TabsTrigger value="team">Team</TabsTrigger>
-              </TabsList>
-              <TabsContent value="tasks">
-                <Card className="bg-black/40 border-white/10 backdrop-blur-xl">
+                <Card className="mb-6">
                   <CardContent className="p-6">
-                    <ul className="space-y-4">
-                      {[
-                        "Complete company policies review",
-                        "Set up development environment",
-                        "Attend team introduction meeting",
-                        "Review project architecture",
-                      ].map((task, index) => (
-                        <li key={index} className="flex items-center gap-3">
-                          <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center">
-                            <CheckCircle2 className="h-4 w-4 text-blue-500" />
-                          </div>
-                          <span>{task}</span>
-                        </li>
-                      ))}
-                    </ul>
+                    <div className="flex items-center justify-between mb-4">
+                      <div>
+                        <h2 className="text-xl font-semibold">{activeAgent.name}</h2>
+                        <p className="text-muted-foreground">
+                          {activeAgent.description || `Complete your ${activeAgent.role} onboarding`}
+                        </p>
+                      </div>
+                      <Button
+                        size="lg"
+                        className="gap-2"
+                        onClick={handleStartSession}
+                      >
+                        {completedSteps > 0 ? "Continue Session" : "Start Onboarding"}
+                        {completedSteps > 0 ? <ArrowRight className="h-4 w-4" /> : <PlayCircle className="h-4 w-4" />}
+                      </Button>
+                    </div>
+                    
+                    {activeAgent.steps && activeAgent.steps.length > 0 && (
+                      <div className="mt-6">
+                        <h3 className="text-sm font-medium mb-3">Onboarding Steps</h3>
+                        <div className="space-y-3">
+                          {activeAgent.steps.slice(0, 5).map((step, index) => (
+                            <div key={index} className="flex items-center gap-3">
+                              <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
+                                index < completedSteps 
+                                  ? "bg-primary/20 text-primary" 
+                                  : "bg-muted text-muted-foreground"
+                              }`}>
+                                {index + 1}
+                              </div>
+                              <span className={index < completedSteps ? "text-primary font-medium" : ""}>
+                                {step.title}
+                              </span>
+                            </div>
+                          ))}
+                          
+                          {activeAgent.steps.length > 5 && (
+                            <div className="text-center pt-2">
+                              <Button variant="link" onClick={handleStartSession}>
+                                View all {activeAgent.steps.length} steps
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
-              </TabsContent>
+              </>
+            )}
+
+            <Tabs defaultValue="resources">
+              <TabsList className="bg-muted">
+                <TabsTrigger value="resources">Resources</TabsTrigger>
+                <TabsTrigger value="schedule">Schedule</TabsTrigger>
+                <TabsTrigger value="team">Team</TabsTrigger>
+              </TabsList>
               <TabsContent value="resources">
-                <Card className="bg-black/40 border-white/10 backdrop-blur-xl">
+                <Card>
                   <CardContent className="p-6">
+                    <h3 className="text-lg font-medium mb-4">Helpful Resources</h3>
                     <ul className="space-y-4">
                       {[
-                        "Employee Handbook",
-                        "Technical Documentation",
-                        "Company Policies",
-                        "Benefits Guide",
-                        "Development Guidelines",
-                        "Team Directory",
+                        { title: "Employee Handbook", icon: BookOpen },
+                        { title: "Company Policies", icon: FileCheck },
+                        { title: "Benefits Guide", icon: FileCheck },
+                        { title: "Development Guidelines", icon: BookOpen },
                       ].map((resource, index) => (
                         <li key={index}>
-                          <Button variant="link" className="gap-2 text-blue-400 hover:text-blue-300 p-0">
-                            <BookOpen className="h-4 w-4" />
-                            {resource}
+                          <Button variant="link" className="gap-2 text-primary hover:text-primary/80 p-0">
+                            <resource.icon className="h-4 w-4" />
+                            {resource.title}
                           </Button>
                         </li>
                       ))}
@@ -1565,25 +1694,52 @@ export default function EmployeeDashboard() {
                   </CardContent>
                 </Card>
               </TabsContent>
-              <TabsContent value="team">
-                <Card className="bg-black/40 border-white/10 backdrop-blur-xl">
+              <TabsContent value="schedule">
+                <Card>
                   <CardContent className="p-6">
-                    <ul className="space-y-4">
+                    <h3 className="text-lg font-medium mb-4">Upcoming Events</h3>
+                    <div className="space-y-4">
                       {[
-                        { name: "Alice Johnson", role: "Team Lead" },
-                        { name: "Bob Smith", role: "Senior Developer" },
-                        { name: "Carol White", role: "Product Manager" },
-                        { name: "David Brown", role: "Designer" },
+                        { title: "Team Introduction", date: "Tomorrow, 2:00 PM", icon: Calendar },
+                        { title: "IT Setup", date: "Wednesday, 10:00 AM", icon: Calendar },
+                        { title: "HR Orientation", date: "Friday, 1:00 PM", icon: Calendar },
+                      ].map((event, index) => (
+                        <div key={index} className="flex items-center gap-3 p-3 bg-muted/30 rounded-md">
+                          <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                            <event.icon className="h-5 w-5 text-primary" />
+                          </div>
+                          <div>
+                            <div className="font-medium">{event.title}</div>
+                            <div className="text-sm text-muted-foreground">{event.date}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+              <TabsContent value="team">
+                <Card>
+                  <CardContent className="p-6">
+                    <h3 className="text-lg font-medium mb-4">Your Team</h3>
+                    <div className="space-y-4">
+                      {[
+                        { name: "Alice Johnson", role: "Team Lead", email: "alice@company.com" },
+                        { name: "Bob Smith", role: "Senior Developer", email: "bob@company.com" },
+                        { name: "Carol White", role: "Product Manager", email: "carol@company.com" },
                       ].map((member, index) => (
-                        <li key={index} className="flex items-center gap-3">
-                          <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-r from-purple-400 to-pink-500" />
+                        <div key={index} className="flex items-center gap-3 p-3 bg-muted/30 rounded-md">
+                          <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-r from-primary to-secondary text-white flex items-center justify-center">
+                            {member.name.charAt(0)}
+                          </div>
                           <div>
                             <div className="font-medium">{member.name}</div>
-                            <div className="text-sm text-gray-400">{member.role}</div>
+                            <div className="text-sm text-muted-foreground">{member.role}</div>
+                            <div className="text-xs text-muted-foreground">{member.email}</div>
                           </div>
-                        </li>
+                        </div>
                       ))}
-                    </ul>
+                    </div>
                   </CardContent>
                 </Card>
               </TabsContent>
@@ -3551,38 +3707,884 @@ export function UserManagement({ users, onUserChange }: UserManagementProps) {
 }
 
 ================
+File: components/employee/assistant-trigger.tsx
+================
+"use client"
+
+import { useState, useEffect } from 'react'
+import { Button } from "@/components/ui/button"
+import { useUser } from "@/app/context/UserContext"
+import { OnboardingAssistant } from "@/components/employee/onboarding-assistant"
+import { Sparkles, HelpCircle } from "lucide-react"
+import { useQuery } from "@tanstack/react-query"
+import { getAgents } from "@/lib/api"
+import { toast } from "@/components/ui/use-toast"
+
+/**
+ * A global floating button that can trigger the AI Assistant from anywhere
+ * in the employee application. This component should be mounted at the app level.
+ */
+export function AssistantTrigger() {
+  const { user } = useUser()
+  const [assistantActive, setAssistantActive] = useState(false)
+  const [activeAgentId, setActiveAgentId] = useState<string | null>(null)
+
+  // Fetch available agents for this employee
+  const { data: agents } = useQuery({
+    queryKey: ["agents"],
+    queryFn: () => getAgents(),
+    enabled: !!user,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  })
+
+  // Select the first agent by default
+  useEffect(() => {
+    if (agents && agents.length > 0 && !activeAgentId) {
+      // Find the first agent where the employee's email is in the agent's emails array
+      const matchingAgent = agents?.find(agent => 
+        agent.emails.includes(user?.email || '')
+      )
+      
+      if (matchingAgent) {
+        setActiveAgentId(matchingAgent._id)
+      }
+    }
+  }, [agents, activeAgentId, user])
+
+  // Launch the assistant
+  const launchAssistant = () => {
+    if (!activeAgentId) {
+      toast({
+        title: "No onboarding guide available",
+        description: "Please contact your administrator to assign you an onboarding process.",
+        variant: "destructive"
+      })
+      return
+    }
+    
+    setAssistantActive(true)
+  }
+
+  // Only show for logged-in users with the employee role
+  if (!user || user.role !== "Employee") {
+    return null
+  }
+
+  return (
+    <>
+      {/* Floating button */}
+      <Button 
+        onClick={launchAssistant}
+        className="fixed bottom-4 right-4 z-40 rounded-full w-12 h-12 p-0 shadow-lg bg-gradient-to-r from-primary to-secondary hover:opacity-90 transition-opacity"
+        title="Launch Onboarding Assistant"
+      >
+        <Sparkles className="h-5 w-5 text-primary-foreground" />
+      </Button>
+
+      {/* Render the assistant overlay if active */}
+      {assistantActive && activeAgentId && (
+        <OnboardingAssistant
+          agentId={activeAgentId}
+          onClose={() => setAssistantActive(false)}
+          onMinimize={() => setAssistantActive(false)}
+        />
+      )}
+    </>
+  )
+}
+
+================
 File: components/employee/header.tsx
 ================
-import { Bell, Search } from "lucide-react"
-import { Input } from "@/components/ui/input"
-import { Button } from "@/components/ui/button"
+"use client"
 
-export function EmployeeHeader() {
+import { useState } from "react"
+import Link from "next/link"
+import { 
+  Bell, 
+  Search, 
+  User2, 
+  HelpCircle, 
+  LogOut, 
+  Settings,
+  Menu,
+  X
+} from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { useUser } from "@/app/context/UserContext"
+import { useRouter } from "next/navigation"
+import { type User } from "@/lib/api"
+
+interface EmployeeHeaderProps {
+  user: User
+}
+
+export function EmployeeHeader({ user }: EmployeeHeaderProps) {
+  const router = useRouter()
+  const { logout } = useUser()
+  const [unreadNotifications, setUnreadNotifications] = useState(2)
+
+  const handleLogout = () => {
+    logout()
+    router.push('/login')
+  }
+
   return (
-    <header className="bg-black/40 backdrop-blur-xl border-b border-white/10 p-4">
+    <header className="sticky top-0 z-30 bg-background/80 backdrop-blur-sm border-b p-4">
       <div className="flex items-center justify-between">
-        <div className="relative">
-          <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-          <Input
-            type="search"
-            placeholder="Search..."
-            className="pl-8 bg-black/20 border-white/10 text-white placeholder:text-gray-400 w-64"
-          />
-        </div>
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" className="text-gray-400 hover:text-white">
-            <Bell className="h-5 w-5" />
-          </Button>
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-r from-blue-500 to-purple-600" />
-            <div>
-              <div className="font-medium">John Doe</div>
-              <div className="text-sm text-gray-400">Software Engineer</div>
+        <div className="lg:w-72"> {/* Spacer for sidebar on desktop */}
+          <div className="hidden lg:flex items-center">
+            <div className="relative">
+              <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                type="search"
+                placeholder="Search..."
+                className="pl-8 bg-muted h-9 w-64 focus-visible:ring-primary"
+              />
             </div>
           </div>
         </div>
+
+        <div className="flex items-center gap-4">
+          <div className="relative">
+            <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground">
+              <Bell className="h-5 w-5" />
+              {unreadNotifications > 0 && (
+                <span className="absolute -top-1 -right-1 bg-primary text-primary-foreground text-xs rounded-full w-4 h-4 flex items-center justify-center">
+                  {unreadNotifications}
+                </span>
+              )}
+            </Button>
+          </div>
+          
+          <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground">
+            <HelpCircle className="h-5 w-5" />
+          </Button>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="rounded-full h-8 w-8">
+                <Avatar className="h-8 w-8">
+                  <AvatarFallback className="bg-primary text-primary-foreground">
+                    {user.email.charAt(0).toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuLabel>
+                <div className="font-normal text-muted-foreground">Signed in as</div>
+                <div className="font-medium truncate">{user.email}</div>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem asChild>
+                <Link href="/employee/profile" className="cursor-pointer">
+                  <User2 className="mr-2 h-4 w-4" />
+                  <span>Profile</span>
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/employee/settings" className="cursor-pointer">
+                  <Settings className="mr-2 h-4 w-4" />
+                  <span>Settings</span>
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handleLogout} className="cursor-pointer">
+                <LogOut className="mr-2 h-4 w-4" />
+                <span>Log out</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
     </header>
+  )
+}
+
+================
+File: components/employee/onboarding-assistant.tsx
+================
+"use client"
+
+import { useState, useEffect, useRef } from "react"
+import { useQuery } from "@tanstack/react-query"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Progress } from "@/components/ui/progress"
+import { Textarea } from "@/components/ui/textarea"
+import { useUser } from "@/app/context/UserContext"
+import { getAgent, type Agent, type OnboardingStep } from "@/lib/api"
+import { toast } from "@/components/ui/use-toast"
+import { 
+  MinimizeIcon, 
+  MaximizeIcon, 
+  X, 
+  Mic, 
+  Video, 
+  ArrowRight,
+  ArrowLeft,
+  CheckCircle,
+  Sparkles,
+  Lightbulb,
+  Camera,
+  ScreenShare,
+  Loader2
+} from "lucide-react"
+import { cn } from "@/lib/utils"
+import { 
+  sendAssistantMessage,
+  loadSessionState,
+  saveSessionState,
+  type AssistantMessage,
+  type SessionState
+} from "@/lib/assistant-api"
+
+interface OnboardingAssistantProps {
+  agentId: string
+  onClose: () => void
+}
+
+export function OnboardingAssistant({ 
+  agentId, 
+  onClose 
+}: OnboardingAssistantProps) {
+  // State for the overlay UI
+  const [isMinimized, setIsMinimized] = useState(false)
+  const [size, setSize] = useState({ width: 'w-80', height: 'h-auto' })
+  const [activeTab, setActiveTab] = useState<'guide' | 'chat'>('guide')
+  const [userQuery, setUserQuery] = useState('')
+  const [recording, setRecording] = useState<{
+    active: boolean;
+    stream: MediaStream | null;
+    type: 'screen' | 'camera' | 'both';
+  }>({
+    active: false,
+    stream: null,
+    type: 'screen'
+  })
+  const [currentStepIndex, setCurrentStepIndex] = useState(0)
+  const [messages, setMessages] = useState<AssistantMessage[]>([])
+  const [isLoading, setIsLoading] = useState(false)
+  const [completedSteps, setCompletedSteps] = useState<string[]>([])
+  const [position, setPosition] = useState({
+    x: 'auto',
+    y: 'auto',
+    right: '20px',
+    bottom: '20px'
+  })
+  
+  const chatContainerRef = useRef<HTMLDivElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const dragStartRef = useRef<{x: number, y: number}>({ x: 0, y: 0 })
+  const videoRef = useRef<HTMLVideoElement>(null)
+  
+  // Fetch agent data
+  const { data: agent } = useQuery({
+    queryKey: ["agent", agentId],
+    queryFn: () => getAgent(agentId),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  })
+
+  // Current step data
+  const currentStep = agent?.steps?.[currentStepIndex]
+
+  // Load saved session state
+  useEffect(() => {
+    if (agent) {
+      const savedState = loadSessionState(agentId)
+      if (savedState) {
+        setCurrentStepIndex(savedState.currentStepIndex)
+        setCompletedSteps(savedState.completedSteps)
+        setMessages(savedState.messages)
+      } else {
+        // Initialize with welcome message if no saved state
+        setMessages([{
+          role: 'assistant',
+          content: `Hi there! I'm your onboarding assistant. I'll guide you through the ${agent.role} onboarding process. Let's start with: ${agent.steps?.[0]?.title || 'your onboarding'}`,
+          timestamp: Date.now()
+        }])
+      }
+    }
+  }, [agent, agentId])
+
+  // Save session state when relevant state changes
+  useEffect(() => {
+    if (agent && messages.length > 0) {
+      const state: SessionState = {
+        agentId,
+        currentStepIndex,
+        completedSteps,
+        messages
+      }
+      saveSessionState(state)
+    }
+  }, [agent, agentId, currentStepIndex, completedSteps, messages])
+
+  // Scroll chat to bottom when new messages arrive
+  useEffect(() => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight
+    }
+  }, [messages])
+
+  // Make the assistant draggable
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+    
+    function handleMouseDown(e: MouseEvent) {
+      if ((e.target as HTMLElement).closest('.handle')) {
+        e.preventDefault()
+        dragStartRef.current = { x: e.clientX, y: e.clientY }
+        document.addEventListener('mousemove', handleMouseMove)
+        document.addEventListener('mouseup', handleMouseUp)
+      }
+    }
+    
+    function handleMouseMove(e: MouseEvent) {
+      if (!containerRef.current) return
+      
+      const dx = e.clientX - dragStartRef.current.x
+      const dy = e.clientY - dragStartRef.current.y
+      dragStartRef.current = { x: e.clientX, y: e.clientY }
+      
+      const rect = containerRef.current.getBoundingClientRect()
+      
+      setPosition({
+        x: `${rect.left + dx}px`,
+        y: `${rect.top + dy}px`,
+        right: 'auto',
+        bottom: 'auto'
+      })
+    }
+    
+    function handleMouseUp() {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+    
+    container.addEventListener('mousedown', handleMouseDown)
+    
+    return () => {
+      container.removeEventListener('mousedown', handleMouseDown)
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [])
+
+  // Cleanup MediaStream when unmounted
+  useEffect(() => {
+    return () => {
+      if (recording.stream) {
+        recording.stream.getTracks().forEach(track => track.stop())
+      }
+    }
+  }, [recording.stream])
+
+  // Function to handle sending a message
+  const handleSendMessage = async () => {
+    if (!userQuery.trim() || !currentStep) return
+    
+    // Add user message to the chat
+    const userMessage: AssistantMessage = {
+      role: 'user',
+      content: userQuery,
+      timestamp: Date.now()
+    }
+    
+    setMessages(prev => [...prev, userMessage])
+    
+    // Clear the input
+    setUserQuery('')
+    
+    // Show loading state
+    setIsLoading(true)
+    
+    try {
+      // Send message to assistant
+      const response = await sendAssistantMessage(userQuery, {
+        agentId,
+        currentStep,
+        currentStepIndex,
+        previousMessages: messages
+      })
+      
+      // Add assistant response
+      setMessages(prev => [...prev, response])
+      
+      // Check if message indicates completion
+      if (response.content.toLowerCase().includes('mark this step as complete')) {
+        goToNextStep()
+      }
+      
+      setIsLoading(false)
+    } catch (error) {
+      console.error('Error getting response:', error)
+      setMessages(prev => [...prev, { 
+        role: 'assistant', 
+        content: "I'm sorry, I'm having trouble responding right now. Please try again later.", 
+        timestamp: Date.now()
+      }])
+      setIsLoading(false)
+    }
+  }
+
+  // Handle keypress for sending messages
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleSendMessage()
+    }
+  }
+
+  // Handle step navigation
+  const goToNextStep = () => {
+    if (agent?.steps && currentStepIndex < agent.steps.length - 1) {
+      // Mark current step as completed
+      if (currentStep?._id) {
+        setCompletedSteps(prev => [...prev.includes(currentStep._id as string) ? prev : [...prev, currentStep._id as string]])
+      }
+      
+      // Go to next step
+      setCurrentStepIndex(prev => prev + 1)
+      
+      // Add a transition message
+      const nextStep = agent.steps[currentStepIndex + 1]
+      if (nextStep) {
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: `Great! Let's move on to the next step: ${nextStep.title}`,
+          timestamp: Date.now()
+        }])
+      }
+    } else if (agent?.steps && currentStepIndex === agent.steps.length - 1) {
+      // Complete the onboarding
+      if (currentStep?._id) {
+        setCompletedSteps(prev => [...prev.includes(currentStep._id as string) ? prev : [...prev, currentStep._id as string]])
+      }
+      
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: "Congratulations! You've completed all the onboarding steps. Is there anything else you'd like help with?",
+        timestamp: Date.now()
+      }])
+    }
+  }
+
+  const goToPreviousStep = () => {
+    if (currentStepIndex > 0) {
+      setCurrentStepIndex(prev => prev - 1)
+      
+      // Add a transition message
+      const prevStep = agent?.steps?.[currentStepIndex - 1]
+      if (prevStep) {
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: `Let's go back to: ${prevStep.title}`,
+          timestamp: Date.now()
+        }])
+      }
+    }
+  }
+
+  // Toggle between expanded and minimized states
+  const toggleMinimize = () => {
+    setIsMinimized(!isMinimized)
+  }
+
+  // Calculate progress percentage
+  const progressPercentage = agent?.steps 
+    ? (completedSteps.length / agent.steps.length) * 100
+    : 0
+
+  // Start screen recording
+  const startScreenRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: {
+          cursor: "always"
+        },
+        audio: true
+      })
+      
+      setRecording({
+        active: true,
+        stream,
+        type: 'screen'
+      })
+      
+      // Connect the stream to the video element
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream
+        videoRef.current.play()
+      }
+      
+      // Add message to chat
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: "I'm now watching your screen. I'll guide you through the process. What would you like to do first?",
+        timestamp: Date.now()
+      }])
+      
+      // Handle when the user stops sharing
+      stream.getVideoTracks()[0].onended = () => {
+        stopRecording()
+      }
+    } catch (error) {
+      console.error('Error starting screen recording:', error)
+      toast({
+        title: "Couldn't access screen",
+        description: "Please allow screen sharing to continue with the onboarding.",
+        variant: "destructive"
+      })
+    }
+  }
+  
+  // Start camera recording
+  const startCameraRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true
+      })
+      
+      setRecording({
+        active: true,
+        stream,
+        type: 'camera'
+      })
+      
+      // Connect the stream to the video element
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream
+        videoRef.current.play()
+      }
+    } catch (error) {
+      console.error('Error starting camera recording:', error)
+      toast({
+        title: "Couldn't access camera",
+        description: "Please allow camera access to continue with the onboarding.",
+        variant: "destructive"
+      })
+    }
+  }
+  
+  // Stop recording
+  const stopRecording = () => {
+    if (recording.stream) {
+      recording.stream.getTracks().forEach(track => track.stop())
+    }
+    
+    setRecording({
+      active: false,
+      stream: null,
+      type: 'screen'
+    })
+    
+    // Clear the video
+    if (videoRef.current) {
+      videoRef.current.srcObject = null
+    }
+  }
+
+  // If in minimized state, show just the floating icon
+  if (isMinimized) {
+    return (
+      <button
+        onClick={toggleMinimize}
+        className="fixed z-50 flex items-center justify-center w-12 h-12 rounded-full bg-primary text-primary-foreground shadow-lg hover:bg-primary/90 transition-colors"
+        style={{
+          right: '20px',
+          bottom: '20px'
+        }}
+      >
+        <Sparkles className="h-6 w-6" />
+      </button>
+    )
+  }
+
+  return (
+    <div
+      ref={containerRef}
+      className={cn(
+        "fixed z-50 flex flex-col overflow-hidden rounded-lg shadow-xl bg-card border border-border",
+        size.width,
+        size.height,
+        recording.active ? "w-auto" : ""
+      )}
+      style={{
+        right: position.right,
+        bottom: position.bottom,
+        left: position.x,
+        top: position.y,
+        resize: 'both'
+      }}
+    >
+      {/* Header - Draggable */}
+      <div className="handle flex items-center justify-between p-3 bg-primary text-primary-foreground cursor-move">
+        <div className="flex items-center gap-2">
+          <Sparkles className="h-5 w-5" />
+          <span className="font-medium">AI Onboarding Assistant</span>
+        </div>
+        <div className="flex items-center">
+          <Button variant="ghost" size="icon" className="h-8 w-8 text-primary-foreground hover:bg-primary/80" onClick={toggleMinimize}>
+            <MinimizeIcon className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="icon" className="h-8 w-8 text-primary-foreground hover:bg-primary/80" onClick={onClose}>
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+      
+      {/* Main content and video area */}
+      <div className="flex">
+        {/* Video container for screen or camera recording */}
+        {recording.active && (
+          <div className="relative">
+            <video 
+              ref={videoRef} 
+              className={cn(
+                "object-cover",
+                recording.type === 'screen' ? "w-96 h-auto" : "w-48 h-auto"
+              )}
+              muted
+            />
+            <Button
+              variant="secondary"
+              size="sm"
+              className="absolute top-2 right-2 bg-black/50 hover:bg-black/70"
+              onClick={stopRecording}
+            >
+              <X className="h-4 w-4 mr-1" /> Stop
+            </Button>
+          </div>
+        )}
+        
+        {/* Assistant container */}
+        <div className="flex-1 overflow-hidden flex flex-col">
+          {/* Tabs */}
+          <div className="flex border-b border-border">
+            <button 
+              className={cn(
+                "flex-1 py-2 px-4 text-sm font-medium",
+                activeTab === 'guide' 
+                  ? "border-b-2 border-primary text-primary" 
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+              onClick={() => setActiveTab('guide')}
+            >
+              Guide
+            </button>
+            <button 
+              className={cn(
+                "flex-1 py-2 px-4 text-sm font-medium",
+                activeTab === 'chat' 
+                  ? "border-b-2 border-primary text-primary" 
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+              onClick={() => setActiveTab('chat')}
+            >
+              Chat
+            </button>
+          </div>
+          
+          {/* Guide Tab Content */}
+          {activeTab === 'guide' && (
+            <div className="flex-1 overflow-y-auto p-4">
+              {agent && currentStep ? (
+                <>
+                  <div className="mb-4">
+                    <div className="text-sm text-muted-foreground mb-1">
+                      Step {currentStepIndex + 1} of {agent.steps?.length || 0}
+                    </div>
+                    <Progress value={progressPercentage} className="h-1.5 mb-2" />
+                    <h3 className="text-lg font-semibold mb-1">{currentStep.title}</h3>
+                    <p className="text-sm text-muted-foreground">{currentStep.description}</p>
+                  </div>
+                  
+                  {/* Recording/screen sharing buttons */}
+                  {!recording.active && (
+                    <div className="grid grid-cols-2 gap-2 mb-4">
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        className="flex flex-col gap-1 h-auto py-3"
+                        onClick={startScreenRecording}
+                      >
+                        <ScreenShare className="h-4 w-4" />
+                        <span className="text-xs">Share Screen</span>
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        className="flex flex-col gap-1 h-auto py-3"
+                        onClick={startCameraRecording}
+                      >
+                        <Camera className="h-4 w-4" />
+                        <span className="text-xs">Turn on Camera</span>
+                      </Button>
+                    </div>
+                  )}
+                  
+                  {/* Recording active message */}
+                  {recording.active && (
+                    <div className="bg-primary/10 rounded-md p-3 mb-4">
+                      <div className="flex items-center gap-2 text-sm font-medium mb-2">
+                        <div className="w-2 h-2 rounded-full bg-destructive animate-pulse" />
+                        <span>{recording.type === 'screen' ? 'Screen sharing' : 'Camera'} active</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        I can now see your {recording.type} and guide you more effectively.
+                      </p>
+                    </div>
+                  )}
+                  
+                  {/* Step guidance */}
+                  <div className="space-y-3 mb-4">
+                    {/* If there's a recording link */}
+                    {currentStep.recordingUrl && (
+                      <div className="bg-muted/50 rounded-md p-3">
+                        <div className="flex items-center gap-2 text-sm font-medium mb-2">
+                          <Video className="h-4 w-4 text-primary" />
+                          <span>Watch demonstration</span>
+                        </div>
+                        <Button 
+                          variant="secondary" 
+                          size="sm" 
+                          className="w-full"
+                          onClick={() => window.open(currentStep.recordingUrl, '_blank')}
+                        >
+                          View Recording
+                        </Button>
+                      </div>
+                    )}
+                    
+                    {/* Assistant tips */}
+                    <div className="bg-primary/10 rounded-md p-3">
+                      <div className="flex items-center gap-2 text-sm font-medium mb-2">
+                        <Lightbulb className="h-4 w-4 text-primary" />
+                        <span>Assistant Tip</span>
+                      </div>
+                      <p className="text-sm">
+                        Share your screen so I can guide you through this process step by step. 
+                        I'll be able to see exactly what you're doing and provide real-time assistance.
+                      </p>
+                    </div>
+                  </div>
+                  
+                  {/* Navigation buttons */}
+                  <div className="flex justify-between gap-2 mt-auto">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={goToPreviousStep}
+                      disabled={currentStepIndex === 0}
+                    >
+                      <ArrowLeft className="h-4 w-4 mr-1" />
+                      Previous
+                    </Button>
+                    
+                    <Button 
+                      variant="default" 
+                      size="sm" 
+                      onClick={goToNextStep}
+                    >
+                      {currentStepIndex < (agent.steps?.length || 0) - 1 ? (
+                        <>
+                          Next
+                          <ArrowRight className="h-4 w-4 ml-1" />
+                        </>
+                      ) : (
+                        <>
+                          Complete
+                          <CheckCircle className="h-4 w-4 ml-1" />
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <div className="flex flex-col items-center justify-center h-full">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary mb-2" />
+                  <p className="text-muted-foreground">Loading onboarding guide...</p>
+                </div>
+              )}
+            </div>
+          )}
+          
+          {/* Chat Tab Content */}
+          {activeTab === 'chat' && (
+            <div className="flex flex-col h-full">
+              {/* Chat messages */}
+              <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 space-y-4">
+                {messages.map((message, index) => (
+                  <div 
+                    key={index} 
+                    className={cn(
+                      "flex", 
+                      message.role === 'assistant' ? "justify-start" : "justify-end"
+                    )}
+                  >
+                    <div 
+                      className={cn(
+                        "max-w-[85%] rounded-lg px-3 py-2 text-sm",
+                        message.role === 'assistant' 
+                          ? "bg-muted text-foreground rounded-tl-none" 
+                          : "bg-primary text-primary-foreground rounded-tr-none"
+                      )}
+                    >
+                      {message.content}
+                    </div>
+                  </div>
+                ))}
+                
+                {isLoading && (
+                  <div className="flex justify-start">
+                    <div className="bg-muted max-w-[85%] rounded-lg px-3 py-2 text-sm rounded-tl-none">
+                      <div className="flex items-center gap-2">
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        <span>Thinking...</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Chat input */}
+              <div className="p-3 border-t border-border">
+                <div className="flex gap-2">
+                  <Textarea
+                    value={userQuery}
+                    onChange={(e) => setUserQuery(e.target.value)}
+                    onKeyDown={handleKeyPress}
+                    placeholder="Ask me anything about this step..."
+                    className="min-h-9 resize-none"
+                  />
+                  <Button 
+                    onClick={handleSendMessage} 
+                    size="icon" 
+                    disabled={!userQuery.trim() || isLoading}
+                  >
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -3591,154 +4593,143 @@ File: components/employee/sidebar.tsx
 ================
 "use client"
 
+import { useState } from "react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
-import { Home, Plus, Users, LogOut, Settings } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { cn } from "@/lib/utils"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { useUser } from "@/app/context/UserContext"
 import { useRouter } from "next/navigation"
-import { useEffect, useState } from "react"
-import { getAgents, type Agent } from "@/lib/api"
+import { 
+  Home, 
+  Book, 
+  FileText, 
+  Settings, 
+  LogOut,
+  Menu,
+  X
+} from "lucide-react"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Button } from "@/components/ui/button"
+import { Separator } from "@/components/ui/separator"
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
+import { useUser } from "@/app/context/UserContext"
+import { cn } from "@/lib/utils"
+import { type Agent } from "@/lib/api"
 
-export function Sidebar() {
-  const pathname = usePathname()
+interface EmployeeSidebarProps {
+  agents: Agent[]
+  activeAgentId: string | null
+  onSelectAgent: (agentId: string) => void
+}
+
+export function EmployeeSidebar({ 
+  agents, 
+  activeAgentId, 
+  onSelectAgent 
+}: EmployeeSidebarProps) {
   const { user, logout } = useUser()
   const router = useRouter()
-  const [agents, setAgents] = useState<Agent[]>([])
+  const [mobileOpen, setMobileOpen] = useState(false)
 
-  useEffect(() => {
-    if (user) {
-      fetchAgents()
-    }
-  }, [user])
-
-  const fetchAgents = async () => {
-    try {
-      // Fetch all agents without filtering by organization.
-      const fetchedAgents = await getAgents()
-      setAgents(fetchedAgents)
-    } catch (error) {
-      console.error("Failed to fetch agents:", error)
-    }
-  }
+  // Filter agents to only show those that include the user's email
+  const userAgents = agents.filter(agent => 
+    agent.emails.includes(user?.email || '')
+  )
 
   const handleLogout = () => {
     logout()
-    router.push("/login")
+    router.push('/login')
   }
 
-  return (
-    <div className="w-80 border-r border-gray-800 backdrop-blur-sm bg-black/60 text-gray-300 p-4 flex flex-col h-screen">
-      <Link
-        href="/employee"
-        className="flex items-center gap-2 px-2 py-1.5 mb-6 text-gray-300 hover:text-white"
-      >
-        <Home size={20} />
-        <span>Home</span>
-      </Link>
-
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-sm font-semibold tracking-wider text-gray-500">
-          AGENTS
-        </h2>
-        <Link href="/employee/create">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8 px-2 text-gray-400 hover:text-white hover:bg-muted/30"
-          >
-            <Plus size={16} />
-            Create Agent
-          </Button>
+  const sidebarContent = (
+    <>
+      <div className="p-6">
+        <Link href="/employee" className="flex items-center gap-2 text-xl font-semibold mb-8">
+          <div className="h-8 w-8 rounded-md bg-primary flex items-center justify-center text-primary-foreground">
+            IR
+          </div>
+          <span>Iro Onboarding</span>
         </Link>
-      </div>
 
-      <div className="space-y-1 flex-grow overflow-auto">
-        {agents.map((agent) => (
-          <Link
-            key={agent._id}
-            href={`/employee/agents/${agent._id}`}
-            className={cn(
-              "block p-3 rounded-lg text-md transition-colors",
-              pathname === `/employee/agents/${agent._id}`
-                ? "bg-gray-800/60 text-white"
-                : "hover:bg-gray-800/50 text-gray-400"
-            )}
+        <nav className="space-y-1 mb-8">
+          <Link 
+            href="/employee" 
+            className="flex items-center gap-2 px-3 py-2 rounded-md hover:bg-muted text-foreground"
           >
-            <div className="font-medium mb-1">{agent.name}</div>
-            <div className="flex items-center text-xs text-gray-500">
-              <span>ROLE: {agent.role}</span>
-            </div>
+            <Home className="h-5 w-5" />
+            <span>Dashboard</span>
           </Link>
-        ))}
+          <Link 
+            href="/employee/resources" 
+            className="flex items-center gap-2 px-3 py-2 rounded-md hover:bg-muted text-foreground"
+          >
+            <Book className="h-5 w-5" />
+            <span>Resources</span>
+          </Link>
+          <Link 
+            href="/employee/progress" 
+            className="flex items-center gap-2 px-3 py-2 rounded-md hover:bg-muted text-foreground"
+          >
+            <FileText className="h-5 w-5" />
+            <span>My Progress</span>
+          </Link>
+        </nav>
+
+        {userAgents.length > 0 && (
+          <>
+            <div className="mb-2">
+              <h3 className="text-xs uppercase text-muted-foreground font-medium tracking-wider px-3">
+                My Onboarding Paths
+              </h3>
+            </div>
+            <div className="space-y-1 mb-8">
+              {userAgents.map((agent) => (
+                <button
+                  key={agent._id}
+                  onClick={() => onSelectAgent(agent._id)}
+                  className={cn(
+                    "w-full flex items-center gap-2 px-3 py-2 rounded-md text-left",
+                    activeAgentId === agent._id
+                      ? "bg-primary/10 text-primary font-medium"
+                      : "hover:bg-muted text-foreground"
+                  )}
+                >
+                  <div className="h-6 w-6 rounded-full bg-muted flex items-center justify-center text-xs">
+                    {agent.name.charAt(0)}
+                  </div>
+                  <div className="flex-1 truncate">
+                    <div className="text-sm truncate">{agent.name}</div>
+                    <div className="text-xs text-muted-foreground truncate">
+                      {agent.role}
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </>
+  )
+
+  return (
+    <>
+      {/* Mobile Sidebar */}
+      <div className="lg:hidden">
+        <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+          <SheetTrigger asChild>
+            <Button variant="outline" size="icon" className="fixed top-4 left-4 z-40">
+              <Menu className="h-5 w-5" />
+            </Button>
+          </SheetTrigger>
+          <SheetContent side="left" className="w-72 p-0">
+            {sidebarContent}
+          </SheetContent>
+        </Sheet>
       </div>
 
-      <div className="mt-auto pt-4 border-t border-gray-800">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              className="w-full flex items-center justify-start px-2 py-3 hover:bg-gray-800/50 rounded-lg"
-            >
-              <Avatar className="w-9 h-9 mr-3 border border-gray-700">
-                <AvatarImage
-                  src="/placeholder.svg?height=36&width=36"
-                  alt="Employee"
-                />
-                <AvatarFallback className="bg-gradient-to-r from-blue-500 to-purple-600 text-white">
-                  {user?.email.charAt(0).toUpperCase()}
-                </AvatarFallback>
-              </Avatar>
-              <div className="flex flex-col items-start overflow-hidden">
-                <span className="text-sm font-medium text-gray-200">
-                  {user?.email}
-                </span>
-                <span className="text-xs text-gray-500 truncate w-full">
-                  {user?.role}
-                </span>
-              </div>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            className="w-56 bg-gray-900 border-gray-700 text-gray-200"
-            align="end"
-            forceMount
-          >
-            <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer focus:bg-gray-800">
-              <Link href="/employee/profile" className="flex items-center w-full">
-                <Avatar className="w-4 h-4 mr-2">
-                  <AvatarFallback className="bg-gradient-to-r from-blue-500 to-purple-600 text-white text-[10px]">
-                    {user?.email.charAt(0).toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
-                <span>Profile</span>
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer focus:bg-gray-800">
-              <Link href="/employee/settings" className="flex items-center w-full">
-                <Settings className="mr-2 h-4 w-4 text-gray-400" />
-                <span>Settings</span>
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              className="hover:bg-gray-800 cursor-pointer focus:bg-gray-800"
-              onSelect={handleLogout}
-            >
-              <LogOut className="mr-2 h-4 w-4 text-gray-400" />
-              <span>Log out</span>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+      {/* Desktop Sidebar */}
+      <div className="hidden lg:block w-72 border-r bg-card h-screen overflow-y-auto">
+        {sidebarContent}
       </div>
-    </div>
+    </>
   )
 }
 
@@ -9760,6 +10751,140 @@ export const deleteRecording = async (recordingId: string): Promise<boolean> => 
     return false;
   }
 };
+
+================
+File: lib/assistant-api.ts
+================
+// lib/assistant-api.ts
+
+import { type OnboardingStep } from "./api";
+
+/**
+ * Interface for the assistant response
+ */
+export interface AssistantMessage {
+  role: 'assistant' | 'user';
+  content: string;
+  timestamp: number;
+}
+
+/**
+ * Interface for the session state
+ */
+export interface SessionState {
+  agentId: string;
+  currentStepIndex: number;
+  completedSteps: string[];
+  messages: AssistantMessage[];
+}
+
+/**
+ * Send a message to the AI assistant
+ * @param message The user's message
+ * @param context The current context including agent ID, step, etc.
+ * @returns The assistant's response
+ */
+export async function sendAssistantMessage(
+  message: string,
+  context: {
+    agentId: string;
+    currentStep: OnboardingStep;
+    currentStepIndex: number;
+    previousMessages: AssistantMessage[];
+  }
+): Promise<AssistantMessage> {
+  // In a real implementation, this would call an API endpoint that interfaces with an LLM
+  // For the demo, we're simulating the response with basic logic
+  
+  try {
+    // Simulate API call delay
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    const { currentStep, currentStepIndex } = context;
+    let responseContent = "";
+    
+    // Simple response logic based on query keywords
+    const query = message.toLowerCase();
+    
+    if (query.includes('next step') || query.includes('what now')) {
+      responseContent = `For the current step "${currentStep?.title}", you should ${currentStep?.description}. Let me know when you're ready to move on.`;
+    } 
+    else if (query.includes('help') || query.includes('confused')) {
+      responseContent = `I see you need some help with "${currentStep?.title}". This step involves ${currentStep?.description}. Try looking for the relevant section in your interface.`;
+    }
+    else if (query.includes('complete') || query.includes('done')) {
+      responseContent = "Great job! Let's mark this step as complete and move on to the next one.";
+    }
+    else if (query.includes('hi') || query.includes('hello') || query.includes('hey')) {
+      responseContent = `Hello! I'm your onboarding assistant. I'm here to help you with your onboarding process. Currently, we're working on step ${currentStepIndex + 1}: ${currentStep?.title}. How can I help you?`;
+    }
+    else if (query.includes('thank')) {
+      responseContent = "You're welcome! I'm here to help. Let me know if you need anything else.";
+    }
+    else {
+      responseContent = `I understand you're asking about "${message}". Let me help with that. Based on the current step, you should focus on ${currentStep?.description}.`;
+    }
+    
+    // Return the assistant message
+    return {
+      role: 'assistant',
+      content: responseContent,
+      timestamp: Date.now()
+    };
+    
+  } catch (error) {
+    console.error('Error getting assistant response:', error);
+    
+    // Return a fallback message
+    return {
+      role: 'assistant',
+      content: "I'm sorry, I'm having trouble responding right now. Please try again later.",
+      timestamp: Date.now()
+    };
+  }
+}
+
+/**
+ * Save session state to localStorage
+ * @param state The current session state
+ */
+export function saveSessionState(state: SessionState): void {
+  try {
+    localStorage.setItem(`onboarding-session-${state.agentId}`, JSON.stringify(state));
+  } catch (error) {
+    console.error('Error saving session state:', error);
+  }
+}
+
+/**
+ * Load session state from localStorage
+ * @param agentId The agent ID for the session
+ * @returns The session state or null if not found
+ */
+export function loadSessionState(agentId: string): SessionState | null {
+  try {
+    const savedState = localStorage.getItem(`onboarding-session-${agentId}`);
+    if (savedState) {
+      return JSON.parse(savedState);
+    }
+  } catch (error) {
+    console.error('Error loading session state:', error);
+  }
+  
+  return null;
+}
+
+/**
+ * Clear session state from localStorage
+ * @param agentId The agent ID for the session
+ */
+export function clearSessionState(agentId: string): void {
+  try {
+    localStorage.removeItem(`onboarding-session-${agentId}`);
+  } catch (error) {
+    console.error('Error clearing session state:', error);
+  }
+}
 
 ================
 File: lib/utils.ts
